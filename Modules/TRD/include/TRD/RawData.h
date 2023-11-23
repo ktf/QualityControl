@@ -11,7 +11,7 @@
 
 ///
 /// \file   RawData.h
-/// \author My Name
+/// \author Sean Murray
 ///
 
 #ifndef QC_MODULE_TRD_TRDRAWDATA_H
@@ -23,20 +23,17 @@
 
 class TH1F;
 class TH2F;
+class TProfile;
 
 using namespace o2::quality_control::core;
 
 namespace o2::quality_control_modules::trd
 {
 
-/// \brief Example Quality Control DPL Task
-/// \author My Name
 class RawData final : public TaskInterface
 {
  public:
-  /// \brief Constructor
   RawData() = default;
-  /// Destructor
   ~RawData() override;
 
   // Definition of the methods for the template method pattern
@@ -61,6 +58,7 @@ class RawData final : public TaskInterface
   TH1F* mDigitParsingTime = nullptr;
   TH1F* mDataVersionsMajor = nullptr;
   TH1F* mParsingErrors = nullptr;
+  TProfile* mDataVolumePerSectorProf = nullptr;
   std::array<TH2F*, 10> mLinkErrors;
   std::array<TH2F*, o2::trd::ParsingErrors::TRDLastParsingError> mParsingErrors2d;
   bool mCheckDigitHCHeaderVersion = false;

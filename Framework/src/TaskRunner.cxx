@@ -117,30 +117,9 @@ void TaskRunner::refreshConfig(InitContext& iCtx)
   }
 }
 
-void TaskRunner::initInfologger(InitContext& iCtx)
-{
-  // TODO : the method should be merged with the other, similar, methods in *Runners
-
-  AliceO2::InfoLogger::InfoLoggerContext* ilContext = nullptr;
-  AliceO2::InfoLogger::InfoLogger* il = nullptr;
-  try {
-    ilContext = &iCtx.services().get<AliceO2::InfoLogger::InfoLoggerContext>();
-    il = &iCtx.services().get<AliceO2::InfoLogger::InfoLogger>();
-  } catch (const RuntimeErrorRef& err) {
-    ILOG(Error, Devel) << "Could not find the DPL InfoLogger" << ENDM;
-  }
-
-  mTaskConfig.infologgerDiscardParameters.discardFile = templateILDiscardFile(mTaskConfig.infologgerDiscardParameters.discardFile, iCtx);
-  QcInfoLogger::init("task/" + mTaskConfig.taskName,
-                     mTaskConfig.infologgerDiscardParameters,
-                     il,
-                     ilContext);
-  QcInfoLogger::setDetector(mTaskConfig.detectorName);
-}
-
 void TaskRunner::init(InitContext& iCtx)
 {
-  initInfologger(iCtx);
+  core::initInfologger(iCtx, mTaskConfig.infologgerDiscardParameters, "task/" + mTaskConfig.taskName, mTaskConfig.detectorName);
   ILOG(Info, Devel) << "Initializing TaskRunner" << ENDM;
 
   refreshConfig(iCtx);
@@ -168,8 +147,12 @@ void TaskRunner::init(InitContext& iCtx)
 
   // setup timekeeping
   mDeploymentMode = DefaultsHelpers::deploymentMode();
-  mTimekeeper = TimekeeperFactory::create(mDeploymentMode);
-  mTimekeeper->setCCDBOrbitsPerTFAccessor([]() { return o2::base::GRPGeomHelper::getNHBFPerTF(); });
+  mTimekeeper = TimekeeperFactory::create(mDeploymentMode, mTaskConfig.cycleDurations.back().first * 1000);
+  mTimekeeper->setCCDBOrbitsPerTFAccessor([]() {
+    // getNHBFPerTF() returns 128 if it does not know, which can be very misleading.
+    // instead we use 0, which will trigger another try when processing another timeslice.
+    return o2::base::GRPGeomHelper::instance().getGRPECS() != nullptr ? o2::base::GRPGeomHelper::getNHBFPerTF() : 0;
+  });
 
   // setup user's task
   mTask.reset(TaskFactory::create(mTaskConfig, mObjectsManager));
@@ -208,15 +191,7 @@ void TaskRunner::run(ProcessingContext& pCtx)
     GRPGeomHelper::instance().checkUpdates(pCtx);
   }
 
-  auto [dataReady, timerReady] = validateInputs(pCtx.inputs());
-
-  if (dataReady) {
-    mTimekeeper->updateByTimeFrameID(pCtx.services().get<TimingInfo>().tfCounter);
-    mTask->monitorData(pCtx);
-    updateMonitoringStats(pCtx);
-  }
-
-  if (timerReady) {
+  if (mTimekeeper->shouldFinishCycle(pCtx.services().get<TimingInfo>())) {
     mTimekeeper->updateByCurrentTimestamp(pCtx.services().get<TimingInfo>().timeslice / 1000);
     finishCycle(pCtx.outputs());
     if (mTaskConfig.resetAfterCycles > 0 && (mCycleNumber % mTaskConfig.resetAfterCycles == 0)) {
@@ -228,6 +203,12 @@ void TaskRunner::run(ProcessingContext& pCtx)
     } else {
       mNoMoreCycles = true;
     }
+  }
+
+  if (isDataReady(pCtx.inputs())) {
+    mTimekeeper->updateByTimeFrameID(pCtx.services().get<TimingInfo>().tfCounter);
+    mTask->monitorData(pCtx);
+    updateMonitoringStats(pCtx);
   }
 }
 
@@ -402,10 +383,9 @@ void TaskRunner::reset()
   }
 }
 
-std::tuple<bool /*data ready*/, bool /*timer ready*/> TaskRunner::validateInputs(const framework::InputRecord& inputs)
+bool TaskRunner::isDataReady(const framework::InputRecord& inputs)
 {
   size_t dataInputsPresent = 0;
-  bool timerReady = false;
 
   for (auto& input : inputs) {
     if (input.header != nullptr) {
@@ -413,16 +393,13 @@ std::tuple<bool /*data ready*/, bool /*timer ready*/> TaskRunner::validateInputs
       const auto* dataHeader = get<DataHeader*>(input.header);
       assert(dataHeader);
 
-      if (!strncmp(dataHeader->dataDescription.str, "TIMER", 5)) {
-        timerReady = true;
-      } else {
+      if (strncmp(dataHeader->dataDescription.str, "TIMER", 5)) {
         dataInputsPresent++;
       }
     }
   }
-  bool dataReady = dataInputsPresent == inputs.size() - 1;
 
-  return { dataReady, timerReady };
+  return dataInputsPresent == inputs.size() - 1;
 }
 
 void TaskRunner::printTaskConfig() const
@@ -457,16 +434,6 @@ void TaskRunner::startOfActivity()
   mCollector->setRunNumber(mActivity.mId);
   mTask->startOfActivity(mActivity);
   mObjectsManager->updateServiceDiscovery();
-
-  // register ourselves to the BK
-  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
-    ILOG(Debug, Devel) << "Registering taskRunner to BookKeeping" << ENDM;
-    try {
-      Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bookkeeping::DPL_PROCESS_TYPE_QC_TASK, "");
-    } catch (std::runtime_error& error) {
-      ILOG(Warning, Devel) << "Failed registration to the BookKeeping: " << error.what() << ENDM;
-    }
-  }
 }
 
 void TaskRunner::endOfActivity()
@@ -500,11 +467,28 @@ void TaskRunner::finishCycle(DataAllocator& outputs)
   ILOG(Debug, Support) << "Finish cycle " << mCycleNumber << ENDM;
   // in the async context we print only info/ops logs, it's easier to temporarily elevate this log
   ((mDeploymentMode == DeploymentMode::Grid) ? ILOG(Info, Ops) : ILOG(Info, Devel)) //
-    << "According to new validity rules, the objects validity is "
+    << "The objects validity is "
     << "(" << mTimekeeper->getValidity().getMin() << ", " << mTimekeeper->getValidity().getMax() << "), "
     << "(" << mTimekeeper->getSampleTimespan().getMin() << ", " << mTimekeeper->getSampleTimespan().getMax() << "), "
     << "(" << mTimekeeper->getTimerangeIdRange().getMin() << ", " << mTimekeeper->getTimerangeIdRange().getMax() << ")" << ENDM;
   mTask->endOfCycle();
+
+  // register ourselves to the BK at the first cycle
+  if (mCycleNumber == 0 && gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+    ILOG(Debug, Devel) << "Registering taskRunner to BookKeeping" << ENDM;
+    try {
+      Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bookkeeping::DPL_PROCESS_TYPE_QC_TASK, "");
+      if (gSystem->Getenv("O2_QC_REGISTER_IN_BK_X_TIMES")) {
+        ILOG(Debug, Devel) << "O2_QC_REGISTER_IN_BK_X_TIMES set to " << gSystem->Getenv("O2_QC_REGISTER_IN_BK_X_TIMES") << ENDM;
+        int iterations = std::stoi(gSystem->Getenv("O2_QC_REGISTER_IN_BK_X_TIMES"));
+        for (int i = 1; i < iterations; i++) { // start at 1 because we already did it once
+          Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bookkeeping::DPL_PROCESS_TYPE_QC_TASK, "");
+        }
+      }
+    } catch (std::runtime_error& error) {
+      ILOG(Warning, Devel) << "Failed registration to the BookKeeping: " << error.what() << ENDM;
+    }
+  }
 
   // this stays until we move to using mTimekeeper.
   auto nowMs = getCurrentTimestamp();

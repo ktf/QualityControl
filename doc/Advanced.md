@@ -412,9 +412,9 @@ In the presented case, the Merger will publish one set of complete MOs per 10 mi
 
 ### Moving windows of selected plots only
 
-In setups which use Mergers in the delta mode,
- one can obtain objects spawning the last cycle alongside the ones covering the whole run.
-These are saved in a subdirectory `mw` and also can be requested by Checks.
+The following applies to synchronous setups which use Mergers in the delta mode and all asynchronous setups.
+One can obtain objects containing data from one cycle alongside the ones covering the whole run.
+These are saved in QCDB in the task subdirectory `mw` and also can be requested by Checks.
 To specify which objects should get a moving window variant, add a `"movingWindows"` list to the task configuration:
 ```json
    "MyTask": {
@@ -435,11 +435,17 @@ To request these objects in a Check, use `TaskMovingWindow` data source, as in t
         }]
       }
 ```
-It is possible to request both the integrated and last cycle plots by the same Check.
+It is possible to request both the integrated and single cycle plots by the same Check.
 
-To test it in a small setup, one can run `o2-qc` with `--full-chain` flag, which creates a complete workflow with a 
-Merger for local QC tasks, even though it runs just one instance of them.
- 
+To test it in a small setup, one can run `o2-qc` with `--full-chain` flag, which creates a complete workflow with a Merger for **local** QC tasks, even though it runs just one instance of them.
+Please remember to use `"location" : "local"` in such case.
+
+In asynchronous QC, the moving window plots will appear in the intermediate QC file in the directory `mw` and will be uploaded to QCDB to `<task_name>/mw`.
+When testing, please make sure to let DPL know that it has to run in Grid mode, so that QC can compute object validity based on timestamps in the data:
+```
+export O2_DPL_DEPLOYMENT_MODE=Grid && o2-qc --local-batch QC.root ...
+```
+
 ## Monitor cycles
 
 The QC tasks monitor and process data continuously during a so-called "monitor cycle". At the end of such a cycle they publish the QC objects that will then continue their way in the QC data flow. 
@@ -1038,7 +1044,7 @@ The simple, deprecated, syntax is
     "tasks": {
       "QcTask": {
         "taskParameters": {
-          "myOwnKey": "myOwnValue"
+          "myOwnKey1": "myOwnValue1"
         },
 ```
 It is accessed with : `mCustomParameters["myOwnKey"]`. 
@@ -1050,7 +1056,7 @@ The new syntax is
         "extendedTaskParameters": {
           "default": {
             "default": {
-              "myOwnKey": "myOwnValue",
+              "myOwnKey1": "myOwnValue1",
               "myOwnKey2": "myOwnValue2",
               "myOwnKey3": "myOwnValue3"
             }
@@ -1081,8 +1087,12 @@ The values can be accessed in various ways.
 
 ### Access optional values with or without activity
 
+The value for the key, runType and beamType is returned if found, or an empty value otherwise. 
+However, before returning an empty value we try to substitute the runType and the beamType with "default". 
+
 ```c++
-// returns an Optional<string> if it finds the key `myOwnKey` for the runType and beamType of the provided activity. 
+// returns an Optional<string> if it finds the key `myOwnKey` for the runType and beamType of the provided activity, 
+// or if it can find the key with the runType or beamType substituted with "default". 
 auto param = mCustomParameters.atOptional("myOwnKey", activity); // activity is "PHYSICS", "Pb-Pb" , returns "myOwnValue1d"
 // same but passing directly the run and beam types
 auto param = mCustomParameters.atOptional("myOwnKey", "PHYSICS", "Pb-Pb"); // returns "myOwnValue1d"
@@ -1091,6 +1101,9 @@ auto param = mCustomParameters.atOptional("myOwnKey", "PHYSICS"); // returns "my
 ```
 
 ### Access values directly specifying the run and beam type
+
+The value for the key, runType and beamType is returned if found, or an exception is thrown otherwise..
+However, before throwing we try to substitute the runType and the beamType with "default".
 
 ```c++
 mCustomParameters["myOwnKey"]; // considering that run and beam type are `default` --> returns `myOwnValue`
@@ -1473,7 +1486,7 @@ One can also enable publishing metrics related to CPU/memory usage. To do so, us
 
 ## Common check `IncreasingEntries`
 
-This check make sures that the number of entries has increased in the past cycle. If not it will display a pavetext 
+This check make sures that the number of entries has increased in the past cycle(s). If not, it will display a pavetext 
 on the plot and set the quality to bad. 
 
 If you use `SetBinContent` the number of entries does not increase creating a false positive. Please call `ResetStats()`
@@ -1485,6 +1498,18 @@ The behaviour of the check can be inverted by setting the customparameter "mustI
           "mustIncrease": "false"
         }
 ```
+
+The number of cycles during which we tolerate increasing (or not respectively) the number of entries can be set with the custom parameter `nBadCyclesLimit`:
+```
+        "extendedCheckParameters": {
+          "default": {
+            "default": {
+              "nBadCyclesLimit": "3",
+            }
+          }
+        }
+```
+In the example above, the quality goes to bad when there are 3 cycles in a row with no increase in the number of entries. 
 
 ## Update the shmem segment size of a detector
 
