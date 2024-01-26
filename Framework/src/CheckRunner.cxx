@@ -357,6 +357,7 @@ QualityObjectsType CheckRunner::check()
   QualityObjectsType allQOs;
   for (auto& [checkName, check] : mChecks) {
     if (updatePolicyManager.isReady(check.getName())) {
+      ILOG(Debug, Support) << "Monitor Objects for the check '" << checkName << "' are ready --> check()" << ENDM;
       auto newQOs = check.check(mMonitorObjects);
       mTotalNumberCheckExecuted += newQOs.size();
 
@@ -366,7 +367,7 @@ QualityObjectsType CheckRunner::check()
       // Was checked, update latest revision
       updatePolicyManager.updateActorRevision(checkName);
     } else {
-      ILOG(Info, Support) << "Monitor Objects for the check '" << checkName << "' are not ready, ignoring" << ENDM;
+      ILOG(Debug, Support) << "Monitor Objects for the check '" << checkName << "' are not ready, ignoring" << ENDM;
     }
   }
   return allQOs;
@@ -509,7 +510,7 @@ void CheckRunner::start(ServiceRegistryRef services)
   mCollector->setRunNumber(mActivity->mId);
   mReceivedEOS = false;
   for (auto& [checkName, check] : mChecks) {
-    check.setActivity(mActivity);
+    check.startOfActivity(*mActivity);
   }
 
   // register ourselves to the BK
@@ -528,6 +529,9 @@ void CheckRunner::stop()
   ILOG(Info, Support) << "Stopping run " << mActivity->mId << ENDM;
   if (!mReceivedEOS) {
     ILOG(Warning, Devel) << "The STOP transition happened before an EndOfStream was received. The very last QC objects in this run might not have been stored." << ENDM;
+  }
+  for (auto& [checkName, check] : mChecks) {
+    check.endOfActivity(*mActivity);
   }
 }
 

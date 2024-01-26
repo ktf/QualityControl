@@ -10,7 +10,7 @@
 // or submit itself to any jurisdiction.
 
 ///
-/// \file   CommonInterface.cxx
+/// \file   UserCodeInterface.cxx
 /// \author Barthelemy von Haller
 ///
 

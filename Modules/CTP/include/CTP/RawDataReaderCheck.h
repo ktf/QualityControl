@@ -18,6 +18,7 @@
 #define QC_MODULE_CTP_CTPRAWDATAREADERCHECK_H
 
 #include "QualityControl/CheckInterface.h"
+class TH1F;
 
 namespace o2::quality_control_modules::ctp
 {
@@ -37,14 +38,20 @@ class RawDataReaderCheck : public o2::quality_control::checker::CheckInterface
   Quality check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap) override;
   void beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult = Quality::Null) override;
   std::string getAcceptedType() override;
+  void startOfActivity(const Activity& activity) override;
 
-  ClassDefOverride(RawDataReaderCheck, 2);
+  ClassDefOverride(RawDataReaderCheck, 3);
 
  private:
   int getRunNumberFromMO(std::shared_ptr<MonitorObject> mo);
+  int getNumberFilledBins(TH1F* hist);
 
   int mRunNumber;
   long int mTimestamp;
+  float mThreshold;
+  std::vector<int> vGoodBC;
+  std::vector<int> vMediumBC;
+  std::vector<int> vBadBC;
 };
 
 } // namespace o2::quality_control_modules::ctp

@@ -46,6 +46,7 @@ add_library(O2QualityControl
   src/CheckRunnerFactory.cxx
   src/AggregatorRunnerFactory.cxx
   src/CheckInterface.cxx
+  src/AggregatorInterface.cxx
   src/DatabaseFactory.cxx
   src/CcdbDatabase.cxx
   src/QcInfoLogger.cxx
@@ -323,7 +324,7 @@ endforeach()
 
 foreach(t testWorkflow testTaskRunner testCheckWorkflow
         testPostProcessingConfig testPostProcessingInterface
-        testCheck testTrendingTask)
+        testCheck testTrendingTask testCustomParameters)
   target_sources(${t} PRIVATE
                  ${CMAKE_BINARY_DIR}/getTestDataDirectory.cxx)
   target_include_directories(${t} PRIVATE ${CMAKE_SOURCE_DIR})

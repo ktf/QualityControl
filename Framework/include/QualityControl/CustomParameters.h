@@ -22,6 +22,7 @@
 #include <string>
 #include <unordered_map>
 #include <optional>
+#include <boost/property_tree/ptree_fwd.hpp>
 
 namespace o2::quality_control::core
 {
@@ -63,7 +64,8 @@ class CustomParameters
 
   /**
    * Return all the parameters (key-value pairs) for the default runType and the default beamType.
-   * @return
+   * @return a map of the key-value pairs for
+   * @throw std::out_of_range if no key-value pair correspond to these beamType and runType
    */
   const std::unordered_map<std::string, std::string>& getAllDefaults();
 
@@ -166,6 +168,12 @@ class CustomParameters
    * prints the CustomParameters
    */
   friend std::ostream& operator<<(std::ostream& out, const CustomParameters& customParameters);
+
+  /**
+   * \brief Provided the config subtree of the custom parameters, load its content and populate this CustomParameters.
+   * \param paramsTree The subtree corresponding to extendedTaskParameters, extendedCheckParameters, etc...
+   */
+  void populateCustomParameters(const boost::property_tree::ptree& paramsTree);
 
  private:
   CustomParametersType mCustomParameters;
