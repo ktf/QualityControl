@@ -85,14 +85,14 @@ class CellTask final : public TaskInterface
     double mMaxTimeTotalEnergy = DBL_MAX;
   };
   struct CellHistograms {
-    o2::emcal::Geometry* mGeometry;
+    o2::emcal::Geometry* mGeometry = nullptr;
     double mCellThreshold;
     double mAmplitudeThresholdTime;
-    // std::array<TH2*, 2> mCellAmplitude;      ///< Cell amplitude
+    // std::array<TH2*, 2> mCellAmplitude = {};      ///< Cell amplitude
     TH2* mCellAmplitude = nullptr; ///< Cell amplitude
                                    //    std::array<TH2*, 2> mCellTime;           ///< Cell time
     TH2* mCellTime = nullptr;      ///< Cell time
-    // std::array<TH2*, 2> mCellAmplitudeCalib; ///< Cell amplitude calibrated
+    // std::array<TH2*, 2> mCellAmplitudeCalib = {}; ///< Cell amplitude calibrated
     TH2* mCellAmplitudeCalib = nullptr; ///< Cell amplitude calibrated
                                         //  std::array<TH2*, 2> mCellTimeCalib;      ///< Cell time calibrated
     TH2* mCellTimeCalib = nullptr;      ///< Cell time calibrated
@@ -127,8 +127,8 @@ class CellTask final : public TaskInterface
     TH1* mCellTimeSupermoduleCalib_EMCAL = nullptr;     ///< Cell time in EMCAL per SuperModule
     TH1* mCellTimeSupermoduleCalib_DCAL = nullptr;      ///< Cell time in DCAL per SuperModule
     TH1* mnumberEvents = nullptr;                       ///< Number of Events for normalization
-    std::array<TH1*, 2> mCellTimeSupermoduleEMCAL_Gain; ///< Cell  time in EMCAL per high low Gain
-    std::array<TH1*, 2> mCellTimeSupermoduleDCAL_Gain;  ///< Digit time in DCAL per high low Gain
+    std::array<TH1*, 2> mCellTimeSupermoduleEMCAL_Gain = {nullptr, nullptr}; ///< Cell  time in EMCAL per high low Gain
+    std::array<TH1*, 2> mCellTimeSupermoduleDCAL_Gain = {nullptr, nullptr};  ///< Digit time in DCAL per high low Gain
 
     void initForTrigger(const std::string trigger, const TaskSettings& settings);
     void startPublishing(o2::quality_control::core::ObjectsManager& manager);
@@ -168,7 +168,7 @@ class CellTask final : public TaskInterface
     uint32_t mTriggerType;
     std::vector<SubEvent> mSubevents;
 
-    int getNumberOfObjects() const
+    [[nodiscard]] int getNumberOfObjects() const
     {
       int nObjects = 0;
       for (auto ev : mSubevents) {
@@ -185,7 +185,7 @@ class CellTask final : public TaskInterface
   void parseMultiplicityRanges();
   void initDefaultMultiplicityRanges();
 
-  std::vector<CombinedEvent> buildCombinedEvents(const std::unordered_map<header::DataHeader::SubSpecificationType, gsl::span<const o2::emcal::TriggerRecord>>& triggerrecords) const;
+  [[nodiscard]] std::vector<CombinedEvent> buildCombinedEvents(const std::unordered_map<header::DataHeader::SubSpecificationType, gsl::span<const o2::emcal::TriggerRecord>>& triggerrecords) const;
   TaskSettings mTaskSettings;                                ///< Settings of the task steered via task parameters
   Bool_t mIgnoreTriggerTypes = false;                        ///< Do not differenciate between trigger types, treat all triggers as phys. triggers
   std::map<std::string, CellHistograms> mHistogramContainer; ///< Container with histograms per trigger class

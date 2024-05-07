@@ -80,7 +80,7 @@ add_library(O2QualityControl
   src/MonitorObjectCollection.cxx
   src/UpdatePolicyManager.cxx
   src/AdvancedWorkflow.cxx
-  src/QualitiesToTRFCollectionConverter.cxx
+  src/QualitiesToFlagCollectionConverter.cxx
   src/Calculators.cxx
   src/DataSourceSpec.cxx
   src/RootFileSink.cxx
@@ -232,8 +232,10 @@ add_executable(o2-qc-test-core
                test/testActivityHelpers.cxx
                test/testAggregatorInterface.cxx
                test/testAggregatorRunner.cxx
+               test/testCheck.cxx
                test/testCheckInterface.cxx
                test/testCheckRunner.cxx
+               test/testCustomParameters.cxx
                test/testInfrastructureGenerator.cxx
                test/testMonitorObject.cxx
                test/testPolicyManager.cxx
@@ -265,7 +267,6 @@ set(TEST_SRCS
     test/testPublisher.cxx
     test/testQcInfoLogger.cxx
     test/testTaskRunner.cxx
-    test/testCheck.cxx
     test/testObjectsManager.cxx
     test/testCcdbDatabase.cxx
     test/testCcdbDatabaseExtra.cxx
@@ -277,9 +278,8 @@ set(TEST_SRCS
     test/testCheckWorkflow.cxx
     test/testWorkflow.cxx
     test/testRepoPathUtils.cxx
-    test/testQualitiesToTRFCollectionConverter.cxx
+    test/testQualitiesToFlagCollectionConverter.cxx
     test/testUserCodeInterface.cxx
-    test/testCustomParameters.cxx
   )
 
 set(TEST_ARGS
@@ -295,10 +295,8 @@ set(TEST_ARGS
     ""
     ""
     ""
-    ""
     "-b --run"
     "-b --run"
-    ""
     ""
     ""
     ""
@@ -325,7 +323,7 @@ endforeach()
 
 foreach(t testWorkflow testTaskRunner testCheckWorkflow
         testPostProcessingConfig testPostProcessingInterface
-        testCheck testTrendingTask testCustomParameters)
+        testTrendingTask)
   target_sources(${t} PRIVATE
                  ${CMAKE_BINARY_DIR}/getTestDataDirectory.cxx)
   target_include_directories(${t} PRIVATE ${CMAKE_SOURCE_DIR})

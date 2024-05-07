@@ -13,7 +13,7 @@
       * [The TrendingTask class](#the-trendingtask-class)
       * [The SliceTrendingTask class](#the-slicetrendingtask-class)
       * [The QualityTask class](#the-qualitytask-class)
-      * [The TRFCollectionTask class](#the-trfcollectiontask-class)
+      * [The FlagCollectionTask class](#the-flagcollectiontask-class)
       * [The BigScreen class](#the-bigscreen-class)
    * [More examples](#more-examples)
 <!--te-->
@@ -453,7 +453,7 @@ Hence, the trending and 1-D distribution can be used to estimate the fraction of
 The QualityObjects to be monitored and displayed are passed as **qualityGroups**, each containing **inputObjects** for a specific, line-separated group. 
 Each group requires a **name** and **path** to the contained objects.
 A **title** can be added optionally, which appears at the top of the group in the canvas.
-By listing certain qualities in **ignoreQualitiesDetails** one can ask to ignore FlagReasons associated to QualityObjects. 
+By listing certain qualities in **ignoreQualitiesDetails** one can ask to ignore Flags associated to QualityObjects.
 
 The **inputObjects** list should contain Quality Object names in a given group.
 A **title** can be added, which is used in the summary canvas to denote given Quality Object.
@@ -526,9 +526,9 @@ Here is a complete example of `QualityTask` configuration:
 }
 ```
 
-### The TRFCollectionTask class
+### The FlagCollectionTask class
 
-This task allows to transform a set of QualityObjects stored QCDB across certain timespan (usually for the duration of a data acquisition run) into a TimeRangeFlagCollection.
+This task allows to transform a set of QualityObjects stored QCDB across certain timespan (usually for the duration of a data acquisition run) into a QualityControlFlagCollection.
 It is meant to be run after for each detector/subsystem separately and when all QualityObjects for a run are generated.
 After generating timestamps, final data tags can be computed as the next step.
 The data formats for tagging data quality are described [here](https://github.com/AliceO2Group/AliceO2/tree/dev/DataFormats/QualityControl/README.md).
@@ -537,8 +537,8 @@ The task should be run asynchronously to data-taking and should be given the sta
 For example:
 
 ```bash
-o2-qc-run-postprocessing --config json://${QUALITYCONTROL_ROOT}/Modules/Common/etc/trfcollection-example.json \
-                         --name TRFCollectionQcCheck --timestamps 1612707603626 1613999652000
+o2-qc-run-postprocessing --config json://${QUALITYCONTROL_ROOT}/Modules/Common/etc/flagcollection-example.json \
+                         --name FlagCollectionQcCheck --timestamps 1612707603626 1613999652000
 ```
 
 The task is configured as follows:
@@ -549,9 +549,9 @@ The task is configured as follows:
       "": "The usual global configuration variables"
     },
     "postprocessing": {
-      "TRFCollectionQcCheck": {
+      "FlagCollectionQcCheck": {
         "active": "true",
-        "className": "o2::quality_control_modules::common::TRFCollectionTask",
+        "className": "o2::quality_control_modules::common::FlagCollectionTask",
         "moduleName": "QcCommon",
         "detectorName": "TST",    "": "One task should concatenate Qualities from detector, defined here.",
         "initTrigger": [],        "": "The triggers can be left empty,",
@@ -567,7 +567,7 @@ The task is configured as follows:
 }
 ```
 
-TimeRangeFlagCollections are meant to be used as a base to derive Data Tags for analysis (WIP).
+QualityControlFlagCollections are meant to be used as a base to derive Data Tags for analysis (WIP).
 
 ### The BigScreen class
 
@@ -594,28 +594,18 @@ The task is configured as follows:
         "className": "o2::quality_control_modules::common::BigScreen",
         "moduleName": "QualityControl",
         "detectorName": "GLO",
-        "customization": [
-          {
-            "name": "NRows",
-            "value": "4"
-          },
-          {
-            "name": "NCols",
-            "value": "5"
-          },
-          {
-            "name": "BorderWidth",
-            "value": "5"
-          },
-          {
-            "name": "NotOlderThan",
-            "value": "3600"
-          },
-          {
-            "name": "IgnoreActivity",
-            "value": "0"
+        "extendedTaskParameters": {
+          "default": {      
+            "default": {      
+              "nRows": "4",
+              "nCols": "5",
+              "borderWidth": "1",
+              "maxObjectTimeShift": "10000",
+              "ignoreActivity": "0",
+              "labels": "CPV,EMC,FDD,FT0,FV0,HMP,ITS,MCH,MFT,MID,PHS,TPC,TOF,TRD,,TRK,MTK,VTX,PID"
+            }
           }
-        ],
+        },
         "dataSources": [
           {
             "names": [
@@ -658,16 +648,17 @@ The task is configured as follows:
 
 The following options allow to configure the appearence and behavior of the task:
 
-* `NRows`/`NCols`: size of the X-Y grid
-* `BorderWidth`: size of the border around the boxes
-* `NotOlderThan`: ignore quality objects that are older than a given number of seconds. A value of -1 means "no limit".
-* `IgnoreActivity`: if diferent from 0, the task will fetch objects regardless of their activity number and type.
+* `nRows`/`nCols`: size of the X-Y grid
+* `borderWidth`: size of the border around the boxes
+* `maxObjectTimeShift`: ignore quality objects that are older than a given number of seconds. A value of -1 means "no limit".
+* `ignoreActivity`: if different from 0, the task will fetch objects regardless of their activity number and type.
+* `labels`: comma-separated list of labels with boxes to be displayed in the canvas. Some places in the grid of boxes can be left empty by inserting two consecutive commas in the list, like between `TRD` and `TRK` in the example above
 
 The names in the data sources are composed of two parts, separated by a colon:
 ```
-SYSTEM_NAME:OBJECT_PATH
+LABEL:OBJECT_PATH
 ```
-The grid of colored boxes is built from the list of data sources, and the corresponding `SYSTEM_NAME` is displayed above each box.
+The `LABEL` should match one of the elements of the `labels` parameter. The quality object will be associated to the corresponding box.
 
 ## More examples
 

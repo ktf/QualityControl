@@ -29,7 +29,8 @@
 #include <TList.h>
 #include <TLine.h>
 
-#include <DataFormatsQualityControl/FlagReasons.h>
+#include <DataFormatsQualityControl/FlagType.h>
+#include <DataFormatsQualityControl/FlagTypeFactory.h>
 
 #include <chrono>  // chrono::system_clock
 #include <ctime>   // localtime
@@ -44,10 +45,15 @@ namespace o2::quality_control_modules::zdc
 
 void ZDCRecDataCheck::configure() {}
 
+void ZDCRecDataCheck::startOfActivity(const Activity& activity)
+{
+  // ILOG(Debug, Devel) << "startOfActivity " << activity.mId << ENDM;
+  init(activity);
+}
+
 Quality ZDCRecDataCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap)
 {
   Quality result = Quality::Null;
-  init();
   mNumEADC = 0;
   mNumWADC = 0;
   mStringWADC = "";
@@ -70,12 +76,12 @@ Quality ZDCRecDataCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
         if ((((float)h->GetBinContent(ib) < (float)mVectParamADC.at(i).minW && (float)h->GetBinContent(ib) >= (float)mVectParamADC.at(i).minE)) || ((float)h->GetBinContent(ib) > (float)mVectParamADC.at(i).maxW && (float)h->GetBinContent(ib) < (float)mVectParamADC.at(i).maxE)) {
           mNumWADC += 1;
           mStringWADC = mStringWADC + mVectParamADC.at(i).ch + " ";
-          ILOG(Warning, Support) << "Rec Warning in " << mVectParamADC.at(i).ch << " intervall: " << mVectParamADC.at(i).minW << " - " << mVectParamADC.at(i).maxW << " Value: " << h->GetBinContent(ib) << ENDM;
+          //  ILOG(Warning, Support) << "Rec Warning in " << mVectParamADC.at(i).ch << " intervall: " << mVectParamADC.at(i).minW << " - " << mVectParamADC.at(i).maxW << " Value: " << h->GetBinContent(ib) << ENDM;
         }
         if (((float)h->GetBinContent(ib) < (float)mVectParamADC.at(i).minE) || ((float)h->GetBinContent(ib) > (float)mVectParamADC.at(i).maxE)) {
           mNumEADC += 1;
           mStringEADC = mStringEADC + mVectParamADC.at(i).ch + " ";
-          ILOG(Error, Support) << "Rec Error in " << mVectParamADC.at(i).ch << " intervall: " << mVectParamADC.at(i).minE << " - " << mVectParamADC.at(i).maxE << " Value: " << h->GetBinContent(ib) << ENDM;
+          //    ILOG(Error, Support) << "Rec Error in " << mVectParamADC.at(i).ch << " intervall: " << mVectParamADC.at(i).minE << " - " << mVectParamADC.at(i).maxE << " Value: " << h->GetBinContent(ib) << ENDM;
         }
       }
       if (mNumWADC == 0 && mNumEADC == 0) {
@@ -107,12 +113,12 @@ Quality ZDCRecDataCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
         if ((((float)h->GetBinContent(ib) < (float)mVectParamTDC.at(i).minW && (float)h->GetBinContent(ib) >= (float)mVectParamTDC.at(i).minE)) || ((float)h->GetBinContent(ib) > (float)mVectParamTDC.at(i).maxW && (float)h->GetBinContent(ib) < (float)mVectParamTDC.at(i).maxE)) {
           mNumWTDC += 1;
           mStringWTDC = mStringWTDC + mVectParamTDC.at(i).ch + " ";
-          ILOG(Warning, Support) << "Rec Warning in " << mVectParamTDC.at(i).ch << " intervall: " << mVectParamTDC.at(i).minW << " - " << mVectParamTDC.at(i).maxW << " Value: " << h->GetBinContent(ib) << ENDM;
+          //  ILOG(Warning, Support) << "Rec Warning in " << mVectParamTDC.at(i).ch << " intervall: " << mVectParamTDC.at(i).minW << " - " << mVectParamTDC.at(i).maxW << " Value: " << h->GetBinContent(ib) << ENDM;
         }
         if (((float)h->GetBinContent(ib) < (float)mVectParamTDC.at(i).minE) || ((float)h->GetBinContent(ib) > (float)mVectParamTDC.at(i).maxE)) {
           mNumETDC += 1;
           mStringETDC = mStringETDC + mVectParamTDC.at(i).ch + " ";
-          ILOG(Error, Support) << "Rec Error in " << mVectParamTDC.at(i).ch << " intervall: " << mVectParamTDC.at(i).minE << " - " << mVectParamTDC.at(i).maxE << " Value: " << h->GetBinContent(ib) << ENDM;
+          //  ILOG(Error, Support) << "Rec Error in " << mVectParamTDC.at(i).ch << " intervall: " << mVectParamTDC.at(i).minE << " - " << mVectParamTDC.at(i).maxE << " Value: " << h->GetBinContent(ib) << ENDM;
         }
       }
       if (mNumWTDC == 0 && mNumETDC == 0) {
@@ -130,22 +136,22 @@ Quality ZDCRecDataCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
       } else if (mQADC == 3 || mQTDC == 3) {
         result = Quality::Bad;
         if (mQADC == 3) {
-          result.addReason(FlagReasonFactory::Unknown(),
-                           "Task quality is bad because in ADC Summary " + std::to_string(mNumWADC) + " channels:" + mStringEADC + "have a value in the bad range");
+          result.addFlag(FlagTypeFactory::Unknown(),
+                         "Task quality is bad because in ADC Summary " + std::to_string(mNumWADC) + " channels:" + mStringEADC + "have a value in the bad range");
         }
         if (mQTDC == 3) {
-          result.addReason(FlagReasonFactory::Unknown(),
-                           "It is bad because in TDC Summary" + std::to_string(mNumWTDC) + " channels:" + mStringETDC + "have a value in the bad range");
+          result.addFlag(FlagTypeFactory::Unknown(),
+                         "It is bad because in TDC Summary" + std::to_string(mNumWTDC) + " channels:" + mStringETDC + "have a value in the bad range");
         }
       } else {
         result = Quality::Medium;
         if (mQADC == 2) {
-          result.addReason(FlagReasonFactory::Unknown(),
-                           "It is medium because in ADC Summary " + std::to_string(mNumWADC) + " channels:" + mStringWADC + "have a value in the medium range");
+          result.addFlag(FlagTypeFactory::Unknown(),
+                         "It is medium because in ADC Summary " + std::to_string(mNumWADC) + " channels:" + mStringWADC + "have a value in the medium range");
         }
         if (mQTDC == 2) {
-          result.addReason(FlagReasonFactory::Unknown(),
-                           "It is medium because in TDC Summary " + std::to_string(mNumWTDC) + " channels:" + mStringWTDC + "have a value in the medium range");
+          result.addFlag(FlagTypeFactory::Unknown(),
+                         "It is medium because in TDC Summary " + std::to_string(mNumWTDC) + " channels:" + mStringWTDC + "have a value in the medium range");
         }
       }
     }
@@ -199,7 +205,7 @@ void ZDCRecDataCheck::setQualityInfo(std::shared_ptr<MonitorObject> mo, int colo
   h->SetLineColor(kBlack);
 }
 
-void ZDCRecDataCheck::init()
+void ZDCRecDataCheck::init(const Activity& activity)
 {
   mVectParamADC.clear();
   mVectParamTDC.clear();
@@ -247,22 +253,22 @@ void ZDCRecDataCheck::init()
   setChName("TDC_ZPCS", "TDC");
 
   for (int i = 0; i < (int)mVectParamADC.size(); i++) {
-    setChCheck(i, "ADC");
+    setChCheck(i, "ADC", activity);
   }
   for (int i = 0; i < (int)mVectParamTDC.size(); i++) {
-    setChCheck(i, "TDC");
+    setChCheck(i, "TDC", activity);
   }
-  if (const auto param = mCustomParameters.find("ADC_POS_MSG_X"); param != mCustomParameters.end()) {
-    mPosMsgADCX = atof(param->second.c_str());
+  if (auto param = mCustomParameters.atOptional("ADC_POS_MSG_X", activity)) {
+    mPosMsgADCX = atof(param.value().c_str());
   }
-  if (const auto param = mCustomParameters.find("ADC_POS_MSG_Y"); param != mCustomParameters.end()) {
-    mPosMsgADCY = atof(param->second.c_str());
+  if (auto param = mCustomParameters.atOptional("ADC_POS_MSG_Y", activity)) {
+    mPosMsgADCY = atof(param.value().c_str());
   }
-  if (const auto param = mCustomParameters.find("TDC_POS_MSG_X"); param != mCustomParameters.end()) {
-    mPosMsgTDCX = atof(param->second.c_str());
+  if (auto param = mCustomParameters.atOptional("TDC_POS_MSG_X", activity)) {
+    mPosMsgTDCX = atof(param.value().c_str());
   }
-  if (const auto param = mCustomParameters.find("TDC_POS_MSG_Y"); param != mCustomParameters.end()) {
-    mPosMsgTDCY = atof(param->second.c_str());
+  if (auto param = mCustomParameters.atOptional("TDC_POS_MSG_Y", activity)) {
+    mPosMsgTDCY = atof(param.value().c_str());
   }
 }
 
@@ -278,12 +284,12 @@ void ZDCRecDataCheck::setChName(std::string channel, std::string type)
   }
 }
 
-void ZDCRecDataCheck::setChCheck(int index, std::string type)
+void ZDCRecDataCheck::setChCheck(int index, std::string type, const Activity& activity)
 {
   std::vector<std::string> tokenString;
   if (type == "ADC" && index < (int)mVectParamADC.size()) {
-    if (const auto param = mCustomParameters.find(mVectParamADC.at(index).ch); param != mCustomParameters.end()) {
-      tokenString = tokenLine(param->second, ";");
+    if (auto param = mCustomParameters.atOptional(mVectParamADC.at(index).ch, activity)) {
+      tokenString = tokenLine(param.value(), ";");
 
       mVectParamADC.at(index).minW = atof(tokenString.at(0).c_str()) - atof(tokenString.at(1).c_str());
       mVectParamADC.at(index).maxW = atof(tokenString.at(0).c_str()) + atof(tokenString.at(1).c_str());
@@ -292,8 +298,8 @@ void ZDCRecDataCheck::setChCheck(int index, std::string type)
     }
   }
   if (type == "TDC" && index < (int)mVectParamTDC.size()) {
-    if (const auto param = mCustomParameters.find(mVectParamTDC.at(index).ch); param != mCustomParameters.end()) {
-      tokenString = tokenLine(param->second, ";");
+    if (auto param = mCustomParameters.atOptional(mVectParamTDC.at(index).ch, activity)) {
+      tokenString = tokenLine(param.value(), ";");
 
       mVectParamTDC.at(index).minW = atof(tokenString.at(0).c_str()) - atof(tokenString.at(1).c_str());
       mVectParamTDC.at(index).maxW = atof(tokenString.at(0).c_str()) + atof(tokenString.at(1).c_str());

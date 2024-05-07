@@ -15,6 +15,8 @@
 /// \author Guillermo Contreras
 /// \author Katarina Krizkova Gajdosova
 /// \author Diana Maria Krupova
+/// \author David Grund
+///
 
 // C++
 #include <string>
@@ -57,9 +59,24 @@ void QcMFTDigitCheck::configure()
     ILOG(Info, Support) << "Custom parameter - ZoneThresholdBad: " << param->second << ENDM;
     mZoneThresholdBad = stoi(param->second);
   }
+  mNoiseScan = 0;
+  if (auto param = mCustomParameters.find("NoiseScan"); param != mCustomParameters.end()) {
+    ILOG(Info, Support) << "Custom parameter - NoiseScan: " << param->second << ENDM;
+    mNoiseScan = stoi(param->second);
+  }
+  mNCyclesNoiseMap = 3;
+  if (auto param = mCustomParameters.find("NCyclesNoiseMap"); param != mCustomParameters.end()) {
+    ILOG(Info, Support) << "Custom parameter - NCyclesNoiseMap: " << param->second << ENDM;
+    mNCyclesNoiseMap = stoi(param->second);
+  }
 
   // no call to beautifier yet
   mFirstCall = true;
+
+  mNCycles = 0;
+  mNewNoisy = 0;
+  mDissNoisy = 0;
+  mTotalNoisy = 0;
 }
 
 Quality QcMFTDigitCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap)
@@ -77,15 +94,10 @@ Quality QcMFTDigitCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
         return Quality::Null;
       }
 
-      float den = hDigitChipOccupancy->GetBinContent(0); // normalisation stored in the uderflow bin
-
       for (int iBin = 0; iBin < hDigitChipOccupancy->GetNbinsX(); iBin++) {
         if (hDigitChipOccupancy->GetBinContent(iBin + 1) == 0) {
           hDigitChipOccupancy->Fill(937); // number of chips with zero digits stored in the overflow bin
         }
-        float num = hDigitChipOccupancy->GetBinContent(iBin + 1);
-        float ratio = (den > 0) ? (num / den) : 0.0;
-        hDigitChipOccupancy->SetBinContent(iBin + 1, ratio);
       }
     }
 
@@ -96,14 +108,10 @@ Quality QcMFTDigitCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
         return Quality::Null;
       }
 
-      float den = hDigitOccupancySummary->GetBinContent(0, 0); // normalisation stored in the uderflow bin
-      float nEmptyBins = 0;                                    // number of empty zones stored here
+      float nEmptyBins = 0; // number of empty zones
 
       for (int iBinX = 0; iBinX < hDigitOccupancySummary->GetNbinsX(); iBinX++) {
         for (int iBinY = 0; iBinY < hDigitOccupancySummary->GetNbinsY(); iBinY++) {
-          float num = hDigitOccupancySummary->GetBinContent(iBinX + 1, iBinY + 1);
-          float ratio = (den > 0) ? (num / den) : 0.0;
-          hDigitOccupancySummary->SetBinContent(iBinX + 1, iBinY + 1, ratio);
           if ((hDigitOccupancySummary->GetBinContent(iBinX + 1, iBinY + 1)) == 0) {
             nEmptyBins = nEmptyBins + 1;
           }
@@ -139,6 +147,29 @@ void QcMFTDigitCheck::readMaskedChips(std::shared_ptr<MonitorObject> mo)
   for (int i = 0; i < calib->size(); i++) {
     if (calib->isFullChipMasked(i)) {
       mMaskedChips.push_back(i);
+    }
+  }
+}
+
+void QcMFTDigitCheck::readNoiseMap(std::shared_ptr<MonitorObject> mo, long timestamp)
+{
+  map<string, string> headers;
+  map<std::string, std::string> filter;
+  auto calib = UserCodeInterface::retrieveConditionAny<o2::itsmft::NoiseMap>("MFT/Calib/NoiseMap/", filter, timestamp);
+  if (calib == nullptr) {
+    ILOG(Error, Support) << "Could not retrieve noisemap from CCDB." << ENDM;
+    return;
+  }
+  mNoisyPix.clear();
+  for (int chipID = 0; chipID < 936; chipID++) {
+    for (int row = 0; row < 512; row++) {
+      for (int col = 0; col < 1024; col++) {
+        int noise = calib->getNoiseLevel(chipID, row, col);
+        if (!noise) {
+          noise = -1;
+        }
+        mNoisyPix.push_back(noise);
+      }
     }
   }
 }
@@ -184,6 +215,7 @@ void QcMFTDigitCheck::createOutsideAccNames()
 
 void QcMFTDigitCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult)
 {
+  mNCycles++;
   // set up masking of dead chips once
   if (mFirstCall) {
     mFirstCall = false;
@@ -228,6 +260,59 @@ void QcMFTDigitCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkR
             b->Draw();
           }
         }
+      }
+    }
+  }
+  if (mNoiseScan == 1) {
+    if (mNCycles == 1) {
+      long timestamp = mo->getValidity().getMin();
+      readNoiseMap(mo, timestamp);
+      mOldNoisyPix = mNoisyPix;
+    }
+
+    if (mNCycles == mNCyclesNoiseMap) {
+      long timestamp = o2::ccdb::getCurrentTimestamp();
+      readNoiseMap(mo, timestamp);
+      mNewNoisyPix = mNoisyPix;
+
+      for (int i = 0; i < mNewNoisyPix.size(); i++) {
+        if (mNewNoisyPix[i] == -1 && mOldNoisyPix[i] != -1) {
+          mDissNoisy++;
+        }
+        if (mNewNoisyPix[i] != -1 && mOldNoisyPix[i] == -1) {
+          mNewNoisy++;
+        }
+        if (mNewNoisyPix[i] != -1) {
+          mTotalNoisy++;
+        }
+      }
+    }
+
+    if (mo->getName().find("mDigitChipOccupancy") != std::string::npos) {
+      auto* DigitOccupancy = dynamic_cast<TH1F*>(mo->getObject());
+      if (DigitOccupancy != nullptr) {
+        TLatex* tl_total = new TLatex(0.14, 0.87, Form("Total noisy pixels: %i", mTotalNoisy));
+        TLatex* tl_new = new TLatex(0.14, 0.83, Form("New noisy pixels: %i", mNewNoisy));
+        TLatex* tl_dis = new TLatex(0.14, 0.79, Form("Disappeared noisy pixels: %i", mDissNoisy));
+        tl_total->SetNDC();
+        tl_total->SetTextFont(42);
+        tl_total->SetTextSize(0.03);
+        tl_total->SetTextColor(kBlue);
+        tl_new->SetNDC();
+        tl_new->SetTextFont(42);
+        tl_new->SetTextSize(0.03);
+        tl_new->SetTextColor(kBlue);
+        tl_dis->SetNDC();
+        tl_dis->SetTextFont(42);
+        tl_dis->SetTextSize(0.03);
+        tl_dis->SetTextColor(kBlue);
+        // add it to the histo
+        DigitOccupancy->GetListOfFunctions()->Add(tl_total);
+        DigitOccupancy->GetListOfFunctions()->Add(tl_new);
+        DigitOccupancy->GetListOfFunctions()->Add(tl_dis);
+        tl_total->Draw();
+        tl_new->Draw();
+        tl_dis->Draw();
       }
     }
   }

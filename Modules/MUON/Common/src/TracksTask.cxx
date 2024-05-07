@@ -48,6 +48,11 @@ GID::mask_t adaptSource(GID::mask_t src)
     src.set(GID::Source::MCH);
     src.set(GID::Source::MID);
   }
+  if (src[GID::Source::MFTMCH] == 1) {
+    // ensure we request the individual tracks as we use their information in the plotter
+    src.set(GID::Source::MFT);
+    src.set(GID::Source::MCH);
+  }
   if (src[GID::Source::MCHMID] == 1) {
     // ensure we request the individual tracks as we use their information in the plotter
     src.set(GID::Source::MCH);
@@ -86,7 +91,7 @@ void TracksTask::initialize(o2::framework::InitContext& /*ic*/)
 
 void TracksTask::createTrackHistos(const Activity& activity)
 {
-  bool fullHistos = getConfigurationParameter<int>(mCustomParameters, "fullHistos", 0, activity) == 1;
+  bool fullHistos = getConfigurationParameter<bool>(mCustomParameters, "fullHistos", false, activity);
 
   double maxTracksPerTF = getConfigurationParameter<double>(mCustomParameters, "maxTracksPerTF", 400, activity);
   double cutRAbsMin = getConfigurationParameter<double>(mCustomParameters, "cutRAbsMin", 17.6, activity);
@@ -225,10 +230,6 @@ bool TracksTask::assertInputs(o2::framework::ProcessingContext& ctx)
     ILOG(Info, Support) << "no mch track clusters available on input" << ENDM;
     return false;
   }
-  if (!ctx.inputs().isValid("mchtrackdigits")) {
-    ILOG(Info, Support) << "no mch track digits available on input" << ENDM;
-    return false;
-  }
   if (mSrc[GID::Source::MCHMID] == 1) {
     if (!ctx.inputs().isValid("matchMCHMID")) {
       ILOG(Info, Support) << "no muon (mch+mid) track available on input" << ENDM;
@@ -264,9 +265,6 @@ void TracksTask::monitorData(o2::framework::ProcessingContext& ctx)
   if (!assertInputs(ctx)) {
     return;
   }
-
-  auto tracksMCH = ctx.inputs().get<gsl::span<o2::mch::TrackMCH>>("trackMCH");
-  auto clusters = ctx.inputs().get<gsl::span<o2::mch::Cluster>>("trackMCHTRACKCLUSTERS");
 
   ILOG(Debug, Devel) << "Debug: Asserted inputs" << ENDM;
 
