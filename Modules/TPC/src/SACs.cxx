@@ -15,7 +15,11 @@
 ///
 
 // O2 includes
+#if __has_include("TPCBase/CDBInterface.h")
 #include "TPCBase/CDBInterface.h"
+#else
+#include "TPCCore/CDBInterface.h"
+#endif
 
 // QC includes
 #include "QualityControl/QcInfoLogger.h"

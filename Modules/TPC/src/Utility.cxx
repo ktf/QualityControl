@@ -19,8 +19,13 @@
 #include "Framework/InputRecordWalker.h"
 #include "DataFormatsTPC/ClusterNativeHelper.h"
 #include "DataFormatsTPC/TPCSectorHeader.h"
+#if __has_include("TPCBase/CalDet.h")
 #include "TPCBase/CalDet.h"
 #include "TPCBase/Painter.h"
+#else
+#include "TPCCore/CalDet.h"
+#include "TPCCore/Painter.h"
+#endif
 #include "CommonUtils/StringUtils.h"
 
 // QC includes
