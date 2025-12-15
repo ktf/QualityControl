@@ -94,7 +94,7 @@ void PostProcessingRunner::init(const PostProcessingRunnerConfig& runnerConfig, 
   mSourceDatabase = configureDatabase(mRunnerConfig.sourceDatabase, "Source");
   mDestinationDatabase = configureDatabase(mRunnerConfig.destinationDatabase, "Destination");
 
-  mObjectManager = std::make_shared<ObjectsManager>(mTaskConfig.taskName, mTaskConfig.className, mTaskConfig.detectorName, mRunnerConfig.consulUrl);
+  mObjectManager = std::make_shared<ObjectsManager>(mTaskConfig.taskName, mTaskConfig.className, mTaskConfig.detectorName);
   mObjectManager->setActivity(mActivity);
   mServices.registerService<DatabaseInterface>(mSourceDatabase.get());
   if (mPublicationCallback == nullptr) {
@@ -187,7 +187,7 @@ void PostProcessingRunner::start(framework::ServiceRegistryRef dplServices)
   QcInfoLogger::setRun(mActivity.mId);
 
   // register ourselves to the BK
-  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+  if (!gSystem->Getenv("O2_QC_DONT_REGISTER_IN_BK")) { // Set this variable to disable the registration
     ILOG(Debug, Devel) << "Registering pp task to BookKeeping" << ENDM;
     try {
       Bookkeeping::getInstance().registerProcess(mActivity.mId, mRunnerConfig.taskName, mRunnerConfig.detectorName, bkp::DplProcessType::QC_POSTPROCESSING, "");
@@ -251,6 +251,10 @@ void PostProcessingRunner::reset()
 
 void PostProcessingRunner::updateValidity(const Trigger& trigger)
 {
+  if (mTaskConfig.validityFromLastTriggerOnly) {
+    mActivity.mValidity = gInvalidValidityInterval;
+  }
+
   if (trigger == TriggerType::UserOrControl) {
     // we ignore it, because it would not make sense to use current time in tracking objects from the past,
     // especially in asynchronous postprocessing

@@ -44,21 +44,42 @@ class DecodingCheck : public o2::quality_control::checker::CheckInterface
   void startOfActivity(const Activity& activity) override;
   Quality check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap) override;
   void beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult = Quality::Null) override;
-  std::string getAcceptedType() override;
 
  private:
-  std::string mGoodFracHistName{ "DecodingErrors/LastCycle/GoodBoardsFractionPerDE" };
-  std::string mSyncFracHistName{ "SyncErrors/LastCycle/SyncedBoardsFractionPerDE" };
+  std::string mGoodFracHistName{ "DecodingErrors/GoodBoardsFractionPerDE" };
+  std::string mGoodFracPerSolarHistName{ "DecodingErrors/GoodBoardsFractionPerSolar" };
+  std::string mSyncFracHistName{ "SyncErrors/SyncedBoardsFractionPerDE" };
+  std::string mSyncFracPerSolarHistName{ "SyncErrors/SyncedBoardsFractionPerSolar" };
+  std::string mGoodFracRefCompHistName{ "DecodingErrors/RefComp/GoodBoardsFractionPerDE" };
+  std::string mSyncFracRefCompHistName{ "SyncErrors/RefComp/SyncedBoardsFractionPerDE" };
+  std::string mGoodFracPerSolarRefCompHistName{ "DecodingErrors/RefComp/GoodBoardsFractionPerSolar" };
+  std::string mSyncFracPerSolarRefCompHistName{ "SyncErrors/RefComp/SyncedBoardsFractionPerSolar" };
   int mMaxBadST12{ 2 };
   int mMaxBadST345{ 3 };
   double mMinGoodErrorFrac{ 0.9 };
   std::array<std::optional<double>, 5> mMinGoodErrorFracPerStation;
+  double mMinGoodErrorFracRatio{ 0.9 };
+  double mMinGoodErrorFracPerSolar{ 0.5 };
+  double mMinGoodErrorFracRatioPerSolar{ 0.9 };
+
   double mMinGoodSyncFrac{ 0.9 };
   std::array<std::optional<double>, 5> mMinGoodSyncFracPerStation;
+  double mMinGoodSyncFracRatio{ 0.9 };
+  double mMinGoodSyncFracPerSolar{ 0.5 };
+  double mMinGoodSyncFracRatioPerSolar{ 0.9 };
+
+  double mMinHeartBeatRate{ 0 };
+  double mMaxHeartBeatRate{ 2 };
+
+  double mGoodFracRatioPlotRange{ 0.2 };
+  double mGoodFracRatioPerSolarPlotRange{ 0.2 };
+  double mSyncFracRatioPlotRange{ 0.2 };
+  double mSyncFracRatioPerSolarPlotRange{ 0.2 };
 
   QualityChecker mQualityChecker;
+  std::array<Quality, getNumSolar()> mSolarQuality;
 
-  ClassDefOverride(DecodingCheck, 1);
+  ClassDefOverride(DecodingCheck, 2);
 };
 
 } // namespace o2::quality_control_modules::muonchambers

@@ -20,11 +20,45 @@
 #include "BookkeepingApi/BkpClientFactory.h"
 #include "BookkeepingApi/BkpClient.h"
 #include <unistd.h>
+#include <filesystem>
+#include <fstream>
 
 using namespace o2::bkp::api;
 
 namespace o2::quality_control::core
 {
+
+std::string readClientToken()
+{
+  // first we try to find the token in the environment variable
+  if (auto tokenEnv = std::getenv("QC_BKP_CLIENT_TOKEN"); tokenEnv != NULL && std::strlen(tokenEnv) > 0) {
+    ILOG(Info, Ops) << "Using token from environment variable QC_BKP_CLIENT_TOKEN" << ENDM;
+    return tokenEnv;
+  }
+
+  // if the environment variable is not set, we try to read it from a file
+  const std::string tokenFileName = "qc_bkp_client_token.txt";
+  std::filesystem::path tokenPath = std::filesystem::current_path() / tokenFileName;
+
+  std::error_code ec;
+  if (std::filesystem::exists(tokenPath, ec) && !ec.value()) {
+    std::string token;
+    std::ifstream tokenFile(tokenPath);
+    // from now on, we throw if something goes wrong, because the user is clearly trying to use a token file
+    if (!tokenFile.is_open()) {
+      throw std::runtime_error("BKP token file '" + tokenFileName + "' was provided but cannot be opened, check permissions");
+    }
+    std::getline(tokenFile, token);
+    if (token.empty()) {
+      throw std::runtime_error("BKP token file '" + tokenFileName + "' was provided but it is empty, please provide a valid token");
+    }
+    ILOG(Debug, Devel) << "Using token from file qc_bkp_client_token.txt" << ENDM;
+    return token;
+  }
+
+  ILOG(Debug, Devel) << "Could not find an env var QC_BKP_CLIENT_TOKEN nor a qc_bkp_client_token.txt file, using BKP client without an authentication token" << ENDM;
+  return "";
+}
 
 void Bookkeeping::init(const std::string& url)
 {
@@ -42,8 +76,14 @@ void Bookkeeping::init(const std::string& url)
     return;
   }
 
+  const auto token = readClientToken();
+
   try {
-    mClient = BkpClientFactory::create(url);
+    if (!token.empty()) {
+      mClient = BkpClientFactory::create(url, token);
+    } else {
+      mClient = BkpClientFactory::create(url);
+    }
   } catch (std::runtime_error& error) {
     ILOG(Warning, Support) << "Error connecting to Bookkeeping: " << error.what() << ENDM;
     return;
@@ -75,4 +115,29 @@ void Bookkeeping::registerProcess(int runNumber, const std::string& name, const 
   }
   mClient->dplProcessExecution()->registerProcessExecution(runNumber, type, getHostName(), name, args, detector);
 }
+
+std::vector<int> Bookkeeping::sendFlagsForSynchronous(uint32_t runNumber, const std::string& detectorName, const std::vector<QcFlag>& qcFlags)
+{
+  if (!mInitialized) {
+    return {};
+  }
+  return mClient->qcFlag()->createForSynchronous(runNumber, detectorName, qcFlags);
+}
+
+std::vector<int> Bookkeeping::sendFlagsForDataPass(uint32_t runNumber, const std::string& passName, const std::string& detectorName, const std::vector<QcFlag>& qcFlags)
+{
+  if (!mInitialized) {
+    return {};
+  }
+  return mClient->qcFlag()->createForDataPass(runNumber, passName, detectorName, qcFlags);
+}
+
+std::vector<int> Bookkeeping::sendFlagsForSimulationPass(uint32_t runNumber, const std::string& productionName, const std::string& detectorName, const std::vector<QcFlag>& qcFlags)
+{
+  if (!mInitialized) {
+    return {};
+  }
+  return mClient->qcFlag()->createForSimulationPass(runNumber, productionName, detectorName, qcFlags);
+}
+
 } // namespace o2::quality_control::core

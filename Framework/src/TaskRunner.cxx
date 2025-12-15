@@ -37,6 +37,7 @@
 #include <CommonUtils/ConfigurableParam.h>
 #include <DetectorsBase/GRPGeomHelper.h>
 
+#include "QualityControl/ObjectMetadataKeys.h"
 #include "QualityControl/QcInfoLogger.h"
 #include "QualityControl/TaskFactory.h"
 #include "QualityControl/runnerUtils.h"
@@ -49,6 +50,7 @@
 #include "QualityControl/ActivityHelpers.h"
 #include "QualityControl/WorkflowType.h"
 #include "QualityControl/HashDataDescription.h"
+#include "QualityControl/runnerUtils.h"
 
 #include <string>
 #include <TFile.h>
@@ -92,8 +94,8 @@ void TaskRunner::init(InitContext& iCtx)
   // registering state machine callbacks
   try {
     iCtx.services().get<CallbackService>().set<CallbackService::Id::Start>([this, services = iCtx.services()]() mutable { start(services); });
+    iCtx.services().get<CallbackService>().set<CallbackService::Id::Stop>([this, services = iCtx.services()]() { stop(services); });
     iCtx.services().get<CallbackService>().set<CallbackService::Id::Reset>([this]() { reset(); });
-    iCtx.services().get<CallbackService>().set<CallbackService::Id::Stop>([this]() { stop(); });
   } catch (o2::framework::RuntimeErrorRef& ref) {
     ILOG(Error) << "Error during initialization: " << o2::framework::error_from_ref(ref).what << ENDM;
   }
@@ -105,7 +107,7 @@ void TaskRunner::init(InitContext& iCtx)
   mCollector->addGlobalTag("DetectorName", mTaskConfig.detectorName);
 
   // setup publisher
-  mObjectsManager = std::make_shared<ObjectsManager>(mTaskConfig.taskName, mTaskConfig.className, mTaskConfig.detectorName, mTaskConfig.consulUrl, mTaskConfig.parallelTaskID);
+  mObjectsManager = std::make_shared<ObjectsManager>(mTaskConfig.taskName, mTaskConfig.className, mTaskConfig.detectorName, mTaskConfig.parallelTaskID);
   mObjectsManager->setMovingWindowsList(mTaskConfig.movingWindows);
 
   // setup timekeeping
@@ -122,6 +124,7 @@ void TaskRunner::init(InitContext& iCtx)
   mTask.reset(TaskFactory::create(mTaskConfig, mObjectsManager));
   mTask->setMonitoring(mCollector);
   mTask->setGlobalTrackingDataRequest(mTaskConfig.globalTrackingDataRequest);
+  mTask->setDatabase(mTaskConfig.repository);
 
   // load config params
   if (!ConfigParamGlo::keyValues.empty()) {
@@ -304,11 +307,6 @@ void TaskRunner::start(ServiceRegistryRef services)
   mNoMoreCycles = false;
   mCycleNumber = 0;
 
-  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK_AT_START")) {
-    // until we are sure it works, we have to turn it on
-    registerToBookkeeping();
-  }
-
   try {
     startOfActivity();
     startCycle();
@@ -320,9 +318,10 @@ void TaskRunner::start(ServiceRegistryRef services)
   }
 }
 
-void TaskRunner::stop()
+void TaskRunner::stop(ServiceRegistryRef services)
 {
   try {
+    mActivity = o2::quality_control::core::computeActivity(services, mActivity);
     if (mCycleOn) {
       mTask->endOfCycle();
       mCycleNumber++;
@@ -405,7 +404,6 @@ void TaskRunner::startOfActivity()
 
   mCollector->setRunNumber(mActivity.mId);
   mTask->startOfActivity(mActivity);
-  mObjectsManager->updateServiceDiscovery();
 }
 
 void TaskRunner::endOfActivity()
@@ -414,10 +412,9 @@ void TaskRunner::endOfActivity()
 
   auto now = getCurrentTimestamp();
   mTimekeeper->updateByCurrentTimestamp(now);
-  mTimekeeper->setEndOfActivity(0, mTaskConfig.fallbackActivity.mValidity.getMax(), now, activity_helpers::getCcdbEorTimeAccessor(mActivity.mId)); // TODO: get end of run from ECS/BK if possible
+  mTimekeeper->setEndOfActivity(mActivity.mValidity.getMax(), mTaskConfig.fallbackActivity.mValidity.getMax(), now, activity_helpers::getCcdbEorTimeAccessor(mActivity.mId));
 
   mTask->endOfActivity(mObjectsManager->getActivity());
-  mObjectsManager->removeAllFromServiceDiscovery();
   mObjectsManager->stopPublishing(PublicationPolicy::ThroughStop);
 
   double rate = mTotalNumberObjectsPublished / mTimerTotalDurationActivity.getTime();
@@ -437,19 +434,14 @@ void TaskRunner::startCycle()
 
 void TaskRunner::registerToBookkeeping()
 {
-  // register ourselves to the BK at the first cycle
-  ILOG(Debug, Devel) << "Registering taskRunner to BookKeeping" << ENDM;
-  try {
-    Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bkp::DplProcessType::QC_TASK, "");
-    if (gSystem->Getenv("O2_QC_REGISTER_IN_BK_X_TIMES")) {
-      ILOG(Debug, Devel) << "O2_QC_REGISTER_IN_BK_X_TIMES set to " << gSystem->Getenv("O2_QC_REGISTER_IN_BK_X_TIMES") << ENDM;
-      int iterations = std::stoi(gSystem->Getenv("O2_QC_REGISTER_IN_BK_X_TIMES"));
-      for (int i = 1; i < iterations; i++) { // start at 1 because we already did it once
-        Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bkp::DplProcessType::QC_TASK, "");
-      }
+  if (!gSystem->Getenv("O2_QC_DONT_REGISTER_IN_BK")) { // Set this variable to disable the registration
+    // register ourselves to the BK at the first cycle
+    ILOG(Debug, Devel) << "Registering taskRunner to BookKeeping" << ENDM;
+    try {
+      Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bkp::DplProcessType::QC_TASK, "");
+    } catch (std::runtime_error& error) {
+      ILOG(Warning, Devel) << "Failed registration to the BookKeeping: " << error.what() << ENDM;
     }
-  } catch (std::runtime_error& error) {
-    ILOG(Warning, Devel) << "Failed registration to the BookKeeping: " << error.what() << ENDM;
   }
 }
 
@@ -464,20 +456,16 @@ void TaskRunner::finishCycle(DataAllocator& outputs)
     << "(" << mTimekeeper->getTimerangeIdRange().getMin() << ", " << mTimekeeper->getTimerangeIdRange().getMax() << ")" << ENDM;
   mTask->endOfCycle();
 
-  if (mCycleNumber == 0 && gSystem->Getenv("O2_QC_REGISTER_IN_BK")) {
-    // until we are sure it works, we have to turn it on
+  if (mCycleNumber == 0) { // register at the end of the first cycle
     registerToBookkeeping();
   }
 
-  // this stays until we move to using mTimekeeper.
-  auto nowMs = getCurrentTimestamp();
   mObjectsManager->setValidity(mTimekeeper->getValidity());
   mNumberObjectsPublishedInCycle += publish(outputs);
   mTotalNumberObjectsPublished += mNumberObjectsPublishedInCycle;
   saveToFile();
 
   publishCycleStats();
-  mObjectsManager->updateServiceDiscovery();
 
   mCycleNumber++;
   mCycleOn = false;
@@ -538,6 +526,7 @@ int TaskRunner::publish(DataAllocator& outputs)
   // getNonOwningArray creates a TObjArray containing the monitoring objects, but not
   // owning them. The array is created by new and must be cleaned up by the caller
   std::unique_ptr<MonitorObjectCollection> array(mObjectsManager->getNonOwningArray());
+  array->addOrUpdateMetadata(repository::metadata_keys::cycleNumber, std::to_string(mCycleNumber));
   int objectsPublished = array->GetEntries();
 
   outputs.snapshot(

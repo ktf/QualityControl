@@ -16,8 +16,11 @@
 
 #include "QualityControl/Aggregator.h"
 #include "QualityControl/AggregatorSpec.h"
+#include "QualityControl/ObjectMetadataKeys.h"
+#include "QualityControl/QualityObject.h"
 #include "QualityControl/RootClassFactory.h"
 #include "QualityControl/AggregatorInterface.h"
+#include "QualityControl/ObjectMetadataHelpers.h"
 #include "QualityControl/UpdatePolicyType.h"
 #include "QualityControl/ActivityHelpers.h"
 #include "QualityControl/Activity.h"
@@ -51,7 +54,8 @@ void Aggregator::init()
       root_class_factory::create<AggregatorInterface>(mAggregatorConfig.moduleName, mAggregatorConfig.className);
     mAggregatorInterface->setName(mAggregatorConfig.name);
     mAggregatorInterface->setCustomParameters(mAggregatorConfig.customParameters);
-    mAggregatorInterface->setCcdbUrl(mAggregatorConfig.conditionUrl);
+    mAggregatorInterface->setCcdbUrl(mAggregatorConfig.ccdbUrl);
+    mAggregatorInterface->setDatabase(mAggregatorConfig.repository);
     mAggregatorInterface->configure();
   } catch (...) {
     std::string diagnostic = boost::current_exception_diagnostic_information();
@@ -105,6 +109,21 @@ QualityObjectsMapType Aggregator::filter(QualityObjectsMapType& qoMap)
   return result;
 }
 
+std::optional<unsigned long> getMaxCycle(const QualityObjectsMapType& qoMap)
+{
+  std::optional<unsigned long> max{};
+  for (const auto& [_, qo] : qoMap) {
+    auto cycle = qo->getMetadataOpt(repository::metadata_keys::cycleNumber);
+    if (cycle.has_value()) {
+      auto parsedCycle = repository::parseCycle(cycle.value());
+      if (parsedCycle) {
+        max = std::max(parsedCycle.value(), max.value_or(0));
+      }
+    }
+  }
+  return max;
+}
+
 QualityObjectsType Aggregator::aggregate(QualityObjectsMapType& qoMap, const Activity& defaultActivity)
 {
   auto filtered = filter(qoMap);
@@ -132,7 +151,8 @@ QualityObjectsType Aggregator::aggregate(QualityObjectsMapType& qoMap, const Act
     }
   }
 
-  auto results = mAggregatorInterface->aggregate(filtered);
+  const auto maxCycle = getMaxCycle(filtered);
+  const auto results = mAggregatorInterface->aggregate(filtered);
   QualityObjectsType qualityObjects;
   for (auto const& [qualityName, quality] : results) {
     qualityObjects.emplace_back(std::make_shared<QualityObject>(
@@ -141,6 +161,9 @@ QualityObjectsType Aggregator::aggregate(QualityObjectsMapType& qoMap, const Act
       mAggregatorConfig.detectorName,
       UpdatePolicyTypeUtils::ToString(mAggregatorConfig.policyType)));
     qualityObjects.back()->setActivity(resultActivity);
+    if (maxCycle.has_value()) {
+      qualityObjects.back()->addMetadata(repository::metadata_keys::cycleNumber, std::to_string(maxCycle.value()));
+    }
   }
   return qualityObjects;
 }
@@ -217,18 +240,20 @@ AggregatorConfig Aggregator::extractConfig(const core::CommonSpec& commonSpec, c
   }
 
   return {
-    aggregatorSpec.aggregatorName,
     aggregatorSpec.moduleName,
     aggregatorSpec.className,
     aggregatorSpec.detectorName,
+    commonSpec.consulUrl,
     aggregatorSpec.customParameters,
+    commonSpec.conditionDBUrl,
+    commonSpec.database,
+    aggregatorSpec.aggregatorName,
     updatePolicy,
     std::move(objectNames),
     checkAllObjects,
     std::move(inputs),
     createOutputSpec(aggregatorSpec.detectorName, aggregatorSpec.aggregatorName),
-    sources,
-    commonSpec.conditionDBUrl
+    sources
   };
 }
 

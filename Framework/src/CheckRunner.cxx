@@ -29,14 +29,12 @@
 #include <utility>
 // QC
 #include "QualityControl/DatabaseFactory.h"
-#include "QualityControl/ServiceDiscovery.h"
 #include "QualityControl/runnerUtils.h"
 #include "QualityControl/InfrastructureSpecReader.h"
 #include "QualityControl/CheckRunnerFactory.h"
 #include "QualityControl/RootClassFactory.h"
 #include "QualityControl/ConfigParamGlo.h"
 #include "QualityControl/Bookkeeping.h"
-#include "QualityControl/WorkflowType.h"
 
 #include <TSystem.h>
 
@@ -116,7 +114,8 @@ std::string CheckRunner::createCheckRunnerFacility(std::string deviceName)
 
 std::string CheckRunner::createSinkCheckRunnerName(InputSpec input)
 {
-  std::string name(CheckRunner::createCheckRunnerIdString() + "-sink-");
+  // we need a shorter name, thus we only use "qc-sink" and not "qc-check-sink"
+  std::string name("qc-sink-");
   name += DataSpecUtils::label(input);
   return name;
 }
@@ -164,9 +163,6 @@ CheckRunner::CheckRunner(CheckRunnerConfig checkRunnerConfig, InputSpec input)
 CheckRunner::~CheckRunner()
 {
   ILOG(Debug, Trace) << "CheckRunner destructor (" << this << ")" << ENDM;
-  if (mServiceDiscovery != nullptr) {
-    mServiceDiscovery->deregister();
-  }
 }
 
 void CheckRunner::init(framework::InitContext& iCtx)
@@ -176,7 +172,6 @@ void CheckRunner::init(framework::InitContext& iCtx)
     Bookkeeping::getInstance().init(mConfig.bookkeepingUrl);
     initDatabase();
     initMonitoring();
-    initServiceDiscovery();
     initLibraries(); // we have to load libraries before we load ConfigurableParams, otherwise the corresponding ROOT dictionaries won't be found
 
     if (!ConfigParamGlo::keyValues.empty()) {
@@ -190,7 +185,6 @@ void CheckRunner::init(framework::InitContext& iCtx)
     updatePolicyManager.reset();
     for (auto& [checkName, check] : mChecks) {
       check.init();
-      check.setDatabase(mDatabase);
       updatePolicyManager.addPolicy(check.getName(), check.getUpdatePolicyType(), check.getObjectsNames(), check.getAllObjectsOption(), false);
     }
   } catch (...) {
@@ -344,7 +338,7 @@ void CheckRunner::store(QualityObjectsType& qualityObjects, long validFrom)
     }
     if (!qualityObjects.empty()) {
       auto& qo = qualityObjects.at(0);
-      ILOG(Info, Devel) << "Validity of QO '" << qo->GetName() << "' is (" << qo->getValidity().getMin() << ", " << qo->getValidity().getMax() << ")" << ENDM;
+      ILOG(Debug, Devel) << "Validity of QO '" << qo->GetName() << "' is (" << qo->getValidity().getMin() << ", " << qo->getValidity().getMax() << ")" << ENDM;
     }
   } catch (boost::exception& e) {
     ILOG(Info, Support) << "Unable to " << diagnostic_information(e) << ENDM;
@@ -363,7 +357,7 @@ void CheckRunner::store(std::vector<std::shared_ptr<MonitorObject>>& monitorObje
     }
     if (!monitorObjects.empty()) {
       auto& mo = monitorObjects.at(0);
-      ILOG(Info, Devel) << "Validity of MO '" << mo->GetName() << "' is (" << mo->getValidity().getMin() << ", " << mo->getValidity().getMax() << ")" << ENDM;
+      ILOG(Debug, Devel) << "Validity of MO '" << mo->GetName() << "' is (" << mo->getValidity().getMin() << ", " << mo->getValidity().getMax() << ")" << ENDM;
     }
   } catch (boost::exception& e) {
     ILOG(Info, Support) << "Unable to " << diagnostic_information(e) << ENDM;
@@ -414,7 +408,6 @@ void CheckRunner::updateServiceDiscovery(const QualityObjectsType& qualityObject
     objects += path + ",";
   }
   objects.pop_back(); // remove last comma
-  mServiceDiscovery->_register(objects);
 }
 
 void CheckRunner::initDatabase()
@@ -430,17 +423,6 @@ void CheckRunner::initMonitoring()
   mCollector->addGlobalTag(tags::Key::Subsystem, tags::Value::QC);
   mCollector->addGlobalTag("CheckRunnerName", mDeviceName);
   mTimer.reset(10000000); // 10 s.
-}
-
-void CheckRunner::initServiceDiscovery()
-{
-  if (mConfig.consulUrl.empty()) {
-    mServiceDiscovery = nullptr;
-    ILOG(Warning, Support) << "Service Discovery disabled" << ENDM;
-    return;
-  }
-  mServiceDiscovery = std::make_shared<ServiceDiscovery>(mConfig.consulUrl, mDeviceName, mDeviceName);
-  ILOG(Info, Support) << "ServiceDiscovery initialized" << ENDM;
 }
 
 void CheckRunner::initLibraries()
@@ -474,7 +456,7 @@ void CheckRunner::start(ServiceRegistryRef services)
   }
 
   // register ourselves to the BK
-  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+  if (!gSystem->Getenv("O2_QC_DONT_REGISTER_IN_BK")) { // Set this variable to disable the registration
     ILOG(Debug, Devel) << "Registering checkRunner to BookKeeping" << ENDM;
     try {
       Bookkeeping::getInstance().registerProcess(mActivity->mId, mDeviceName, mDetectorName, bkp::DplProcessType::QC_CHECKER, "");

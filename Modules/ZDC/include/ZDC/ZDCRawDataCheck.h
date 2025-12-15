@@ -36,8 +36,6 @@ class ZDCRawDataCheck : public o2::quality_control::checker::CheckInterface
 
   Quality check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap) override;
   void beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult = Quality::Null) override;
-  std::string getAcceptedType() override;
-
   ClassDefOverride(ZDCRawDataCheck, 2);
   struct sCheck {
     std::string ch;
@@ -75,6 +73,10 @@ class ZDCRawDataCheck : public o2::quality_control::checker::CheckInterface
  private:
   std::vector<sHistoCheck> mVectHistoCheck;
   std::vector<std::string> mVectch;
+  float NOISE_LEVEL_LOW = 0.0;
+  float NOISE_LEVEL_HIGH = 2.0;
+  bool COMPARATOR_ARRAY[12];
+  int REFERENCE_BIN = 7;
 
   // std::string mStringW = "List channels Warning Quality: ";
   // std::string mStringE = "List channels Bad Quality: ";

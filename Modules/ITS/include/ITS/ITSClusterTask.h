@@ -74,12 +74,18 @@ class ITSClusterTask : public TaskInterface
 
   static constexpr int NLayer = 7;
   static constexpr int NLayerIB = 3;
+  static constexpr int NStavesIB = 12 + 16 + 20;
+  static constexpr int NStavesOB = 24 + 30 + 42 + 48;
 
   std::vector<TObject*> mPublishedObjects;
+
+  // Task
+  TH1D* hTFCounter = nullptr;
 
   // Inner barrel
   TH1D* hClusterTopologySummaryIB[NLayer][48][9] = { { { nullptr } } };
   TH1D* hGroupedClusterSizeSummaryIB[NLayer][48][9] = { { { nullptr } } };
+  TH1D* hClusterSizeSummaryIB[NLayer][48][9] = { { { nullptr } } };
 
   std::shared_ptr<TH2DRatio> hAverageClusterOccupancySummaryIB[NLayer];
   std::shared_ptr<TH2DRatio> hAverageClusterSizeSummaryIB[NLayer];
@@ -93,17 +99,20 @@ class ITSClusterTask : public TaskInterface
   std::shared_ptr<TH2DRatio> hAverageClusterSizeSummaryOB[NLayer];
 
   // Layer summary
-  TH1D* hClusterSizeLayerSummary[NLayer] = { nullptr };
-  TH1D* hClusterTopologyLayerSummary[NLayer] = { nullptr };
-  TH1D* hGroupedClusterSizeLayerSummary[NLayer] = { nullptr };
+  TH1L* hClusterSizeLayerSummary[NLayer] = { nullptr };
+  TH1L* hClusterTopologyLayerSummary[NLayer] = { nullptr };
+  TH1L* hGroupedClusterSizeLayerSummary[NLayer] = { nullptr };
+  TH2D* hClusterOccupancyDistribution[NLayer] = { nullptr }; // number of clusters and hits per chip, per ROF. From clusters with npix > 2
 
   // Anomalies plots
-  TH2D* hLongClustersPerChip[3] = { nullptr };
+  TH2D* hLongClustersPerChip[3] = { nullptr }; // IB layers
   TH2D* hMultPerChipWhenLongClusters[3] = { nullptr };
+  TH2D* hLongClustersPerStave[4] = { nullptr }; // OB layers
 
   // General
   TH2D* hClusterVsBunchCrossing = nullptr;
   std::unique_ptr<TH2DRatio> mGeneralOccupancy = nullptr;
+  TH2D* hClusterCenterMap[3] = { nullptr }; // only IB
 
   // Fine checks
 
@@ -143,6 +152,7 @@ class ITSClusterTask : public TaskInterface
   static constexpr int mNStaves[NLayer] = { 12, 16, 20, 24, 30, 42, 48 };
   static constexpr int mNHicPerStave[NLayer] = { 1, 1, 1, 8, 8, 14, 14 };
   static constexpr int mNChipsPerHic[NLayer] = { 9, 9, 9, 14, 14, 14, 14 };
+  static constexpr int mNChipsPerStave[NLayer] = { 9, 9, 9, 112, 112, 196, 196 };
   static constexpr int mNLanePerHic[NLayer] = { 3, 3, 3, 2, 2, 2, 2 };
   static constexpr int ChipBoundary[NLayer + 1] = { 0, 108, 252, 432, 3120, 6480, 14712, 24120 };
   static constexpr int StaveBoundary[NLayer + 1] = { 0, 12, 28, 48, 72, 102, 144, 192 };

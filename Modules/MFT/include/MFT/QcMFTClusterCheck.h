@@ -40,7 +40,6 @@ class QcMFTClusterCheck : public o2::quality_control::checker::CheckInterface
   void configure() override;
   Quality check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap) override;
   void beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult = Quality::Null) override;
-  std::string getAcceptedType() override;
 
  private:
   int mLadderThresholdMedium;
@@ -53,7 +52,7 @@ class QcMFTClusterCheck : public o2::quality_control::checker::CheckInterface
   // masked chips part
   bool mFirstCall;
   std::vector<int> mMaskedChips;
-  std::vector<string> mChipMapName;
+  std::vector<std::string> mChipMapName;
 
   void readMaskedChips(std::shared_ptr<MonitorObject> mo);
   void createMaskedChipsNames();

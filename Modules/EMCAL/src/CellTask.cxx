@@ -38,6 +38,7 @@
 #include <Framework/InputRecord.h>
 #include <Framework/InputRecordWalker.h>
 #include <CommonConstants/Triggers.h>
+#include "EMCAL/DrawGridlines.h"
 #include <set>
 
 namespace o2::quality_control_modules::emcal
@@ -1090,6 +1091,8 @@ void CellTask::CellHistograms::startPublishing(o2::quality_control::core::Object
   publishOptional(mCellAmplitudeCalib_EMCAL);
   publishOptional(mCellAmplitudeCalib_DCAL);
   publishOptional(mCellOccupancy);
+  o2::quality_control_modules::emcal::DrawGridlines::DrawSMGridInTriggerGeo(mCellOccupancyThr);
+  o2::quality_control_modules::emcal::DrawGridlines::DrawSMGridInTriggerGeo(mCellOccupancyThrBelow);
   publishOptional(mCellOccupancyThr);
   publishOptional(mCellOccupancyThrBelow);
   publishOptional(mCellOccupancyGood);

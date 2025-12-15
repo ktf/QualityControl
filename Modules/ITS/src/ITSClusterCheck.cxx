@@ -69,12 +69,13 @@ Quality ITSClusterCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
 
     if (iter->second->getName().find("General_Occupancy") != std::string::npos) {
       auto* hp = dynamic_cast<TH2D*>(iter->second->getObject());
+      auto activity = iter->second->getActivity();
       if (hp == nullptr) {
         ILOG(Error, Support) << "could not cast general occupancy to TH2D*" << ENDM;
         continue;
       }
-      std::vector<int> skipxbins = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "skipxbinsoccupancy", ""));
-      std::vector<int> skipybins = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "skipybinsoccupancy", ""));
+      std::vector<int> skipxbins = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "skipxbinsoccupancy", ""));
+      std::vector<int> skipybins = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "skipybinsoccupancy", ""));
       std::vector<std::pair<int, int>> xypairs;
       for (int i = 0; i < (int)skipxbins.size(); i++) {
         xypairs.push_back(std::make_pair(skipxbins[i], skipybins[i]));
@@ -90,7 +91,9 @@ Quality ITSClusterCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
             continue;
           }
 
-          maxcluocc[ilayer] = o2::quality_control_modules::common::getFromConfig<int>(mCustomParameters, Form("maxcluoccL%d", ilayer), maxcluocc[ilayer]);
+          // maxcluocc[ilayer] = o2::quality_control_modules::common::getFromConfig<int>(mCustomParameters, Form("maxcluoccL%d", ilayer), maxcluocc[ilayer]);
+
+          maxcluocc[ilayer] = stof(mCustomParameters.at(Form("maxcluoccL%d", ilayer), activity));
           if (hp->GetBinContent(ix, iy) > maxcluocc[ilayer]) {
             result.set(Quality::Medium);
             result.updateMetadata(Form("Layer%d%s", ilayer, tb.c_str()), "medium");
@@ -133,13 +136,11 @@ Quality ITSClusterCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
   return result;
 } // end check
 
-std::string ITSClusterCheck::getAcceptedType() { return "TH2D"; }
-
 void ITSClusterCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult)
 {
-  std::vector<string> vPlotWithTextMessage = convertToArray<string>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "plotWithTextMessage", ""));
-  std::vector<string> vTextMessage = convertToArray<string>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "textMessage", ""));
-  std::map<string, string> ShifterInfoText;
+  std::vector<std::string> vPlotWithTextMessage = convertToArray<std::string>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "plotWithTextMessage", ""));
+  std::vector<std::string> vTextMessage = convertToArray<std::string>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "textMessage", ""));
+  std::map<std::string, std::string> ShifterInfoText;
 
   if ((int)vTextMessage.size() == (int)vPlotWithTextMessage.size()) {
     for (int i = 0; i < (int)vTextMessage.size(); i++) {

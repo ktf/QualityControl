@@ -97,7 +97,6 @@ Quality DigitsQcCheck::check(std::map<std::string, std::shared_ptr<MonitorObject
           qual = Quality::Null;
         } else if (mean > mMeanMultThreshold || mean < mMinMultThreshold) {
           qual = Quality::Bad;
-          result = qual;
           ++nBad;
         } else if (mean > mMeanMultThreshold / 2.) {
           qual = Quality::Medium;
@@ -153,22 +152,44 @@ Quality DigitsQcCheck::check(std::map<std::string, std::shared_ptr<MonitorObject
             }
           }
         }
-        auto qual = Quality::Good;
+
+        auto qualBadLB = Quality::Good;
+        auto qualEmptyLB = Quality::Good;
         if (nBadLB > 0) {
-          qual = Quality::Medium;
+          qualBadLB = Quality::Medium;
           if (nBadLB > mNbBadLocalBoard) {
-            qual = Quality::Bad;
+            qualBadLB = Quality::Bad;
           }
           auto flag = o2::quality_control::FlagType();
-          qual.addFlag(flag, fmt::format("{} boards > {} kHz", nBadLB, mLocalBoardThreshold));
-        } else if (nEmptyLB > 0) {
-          qual = Quality::Medium;
-          if (nEmptyLB > mNbEmptyLocalBoard) {
-            qual = Quality::Bad;
-          }
-          auto flag = o2::quality_control::FlagType();
-          qual.addFlag(flag, fmt::format("{} boards empty", nEmptyLB));
+          qualBadLB.addFlag(flag, fmt::format("{} boards > {} kHz", nBadLB, mLocalBoardThreshold));
         }
+        if (nEmptyLB > 0) {
+          qualEmptyLB = Quality::Medium;
+          if (nEmptyLB > mNbEmptyLocalBoard) {
+            qualEmptyLB = Quality::Bad;
+          }
+          auto flag = o2::quality_control::FlagType();
+          qualEmptyLB.addFlag(flag, fmt::format("{} boards empty", nEmptyLB));
+        }
+
+        auto qual = Quality::Good;
+        if (qualBadLB.isWorseThan(qual)) {
+          qual.set(qualBadLB);
+        }
+        if (qualEmptyLB.isWorseThan(qual)) {
+          qual.set(qualEmptyLB);
+        }
+        // copy flags to aggregated quality
+        for (const auto& flag : qualBadLB.getFlags()) {
+          qual.addFlag(flag.first, flag.second);
+        }
+        for (const auto& flag : qualEmptyLB.getFlags()) {
+          qual.addFlag(flag.first, flag.second);
+        }
+        // copy metadata to aggregated quality
+        qual.addMetadata(qualBadLB.getMetadataMap());
+        qual.addMetadata(qualEmptyLB.getMetadataMap());
+
         mQualityMap[item.second->getName()] = qual;
         result = qual;
       } // if mNTFInSeconds > 0.
@@ -198,8 +219,6 @@ Quality DigitsQcCheck::check(std::map<std::string, std::shared_ptr<MonitorObject
 
   return result;
 }
-
-std::string DigitsQcCheck::getAcceptedType() { return "TH1"; }
 
 void DigitsQcCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult)
 {
@@ -248,36 +267,78 @@ void DigitsQcCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkRes
     if (mo->getName().find(lbHistoName) != std::string::npos) {
       // This matches "LocalBoardsMap*"
       auto histo = dynamic_cast<TH2F*>(mo->getObject());
-      if (mo->getName() == lbHistoName) {
-        // This is LocalBoardsMap and it was already scaled in the checker
-        if (!checkResult.getFlags().empty()) {
-          mHistoHelper.addLatex(histo, 0.12, 0.72, color, checkResult.getFlags().front().second.c_str());
+      if (histo) {
+        if (mo->getName() == lbHistoName) {
+          // This is LocalBoardsMap and it was already scaled in the checker
+          float xFlagText = 0.12;
+          float yFlagText = 0.72;
+          for (const auto& flag : checkResult.getFlags()) {
+            mHistoHelper.addLatex(histo, xFlagText, yFlagText, color, flag.second.c_str());
+            yFlagText -= 0.1;
+          }
+          mHistoHelper.addLatex(histo, 0.3, 0.32, color, fmt::format("Quality::{}", checkResult.getName()));
+          histo->SetMaximum(zcontoursLoc4.back());
+          histo->SetContour(zcontoursLoc4.size(), zcontoursLoc4.data());
+        } else {
+          mHistoHelper.normalizeHistoTokHz(histo);
+          histo->SetMaximum(zcontoursLoc.back());
+          histo->SetContour(zcontoursLoc.size(), zcontoursLoc.data());
         }
-        mHistoHelper.addLatex(histo, 0.3, 0.32, color, fmt::format("Quality::{}", checkResult.getName()));
-        histo->SetMaximum(zcontoursLoc4.back());
-        histo->SetContour(zcontoursLoc4.size(), zcontoursLoc4.data());
-      } else {
-        mHistoHelper.normalizeHistoTokHz(histo);
-        histo->SetMaximum(zcontoursLoc.back());
-        histo->SetContour(zcontoursLoc.size(), zcontoursLoc.data());
+        mHistoHelper.updateTitleWithNTF(histo);
+        histo->SetStats(0);
       }
-      mHistoHelper.updateTitleWithNTF(histo);
-      histo->SetStats(0);
-    } else {
-
-      // Strips Display
-      if (mo->getName().find("BendHitsMap") != std::string::npos) {
-        // This matches both [N]BendHitsMap*
-        int maxStrip = 20; // 20kHz Max Display
-        auto histo = dynamic_cast<TH2F*>(mo->getObject());
+    } else if (mo->getName().find("BendHitsMap") != std::string::npos) { // Strips Display
+      // This matches both [N]BendHitsMap*
+      int maxStrip = 20; // 20kHz Max Display
+      auto histo = dynamic_cast<TH2F*>(mo->getObject());
+      if (histo) {
         mHistoHelper.normalizeHistoTokHz(histo);
         histo->SetMaximum(zcontoursStrip.back());
         histo->SetContour(zcontoursStrip.size(), zcontoursStrip.data());
         histo->SetStats(0);
-      } else if (mo->getName() == "Hits") {
-        auto histo = dynamic_cast<TH1F*>(mo->getObject());
+      }
+    } else if (mo->getName() == "Hits") {
+      auto histo = dynamic_cast<TH1F*>(mo->getObject());
+      if (histo) {
         mHistoHelper.normalizeHistoTokHz(histo);
         histo->SetStats(0);
+      }
+    } else if (mo->getName() == "GBTRate") {
+      auto histo = dynamic_cast<TH1F*>(mo->getObject());
+      if (histo) {
+        // if (mHistoHelper.getNTFs() > 0)
+        mHistoHelper.normalizeHistoTokHz(histo);
+        histo->SetMinimum(0.);
+        TString XLabel[32] = { "5R0", "5R1", "4R0", "4R1", "1R0", "1R1", "0R0", "0R1",
+                               "2R0", "2R1", "3R0", "3R1", "7R0", "7R1", "6R0", "6R1",
+                               "5L0", "5L1", "4L0", "4L1", "1L0", "1L1", "0L0", "0L1",
+                               "2L0", "2L1", "3L0", "3L1", "7L0", "7L1", "6L0", "6L1" };
+        for (Int_t i = 0; i < 32; ++i)
+          histo->GetXaxis()->SetBinLabel(i + 1, XLabel[i]);
+        histo->GetXaxis()->SetLabelSize(0.07);
+        histo->GetXaxis()->SetLabelColor(4);
+      }
+    } else if (mo->getName() == "EPRate") {
+      auto histo = dynamic_cast<TH1F*>(mo->getObject());
+      if (histo) {
+        mHistoHelper.normalizeHistoTokHz(histo);
+        histo->SetMinimum(0.);
+        histo->GetXaxis()->SetBinLabel(1, "CRU0(990)-EP0");
+        histo->GetXaxis()->SetBinLabel(2, "CRU0(990)-EP1");
+        histo->GetXaxis()->SetBinLabel(3, "CRU1(974)-EP0");
+        histo->GetXaxis()->SetBinLabel(4, "CRU1(974)-EP1");
+        histo->GetXaxis()->SetLabelSize(0.07);
+        histo->GetXaxis()->SetLabelColor(4);
+      }
+    } else if (mo->getName() == "CRURate") {
+      auto histo = dynamic_cast<TH1F*>(mo->getObject());
+      if (histo) {
+        mHistoHelper.normalizeHistoTokHz(histo);
+        histo->SetMinimum(0.);
+        histo->GetXaxis()->SetBinLabel(1, "CRU0 (990)");
+        histo->GetXaxis()->SetBinLabel(2, "CRU1 (974)");
+        histo->GetXaxis()->SetLabelSize(0.07);
+        histo->GetXaxis()->SetLabelColor(4);
       }
     }
   }

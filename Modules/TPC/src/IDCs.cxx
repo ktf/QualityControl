@@ -15,10 +15,16 @@
 ///
 
 // O2 includes
+#include "TPCBase/CalArray.h"
+#if __has_include("TPCBase/Painter.h")
+#include "TPCBase/Painter.h"
 #include "TPCBase/CDBInterface.h"
 #include "TPCBase/CalDet.h"
-#include "TPCBase/CalArray.h"
-#include "TPCBase/Painter.h"
+#else
+#include "TPCCore/Painter.h"
+#include "TPCCore/CDBInterface.h"
+#include "TPCCore/CalDet.h"
+#endif
 
 // QC includes
 #include "QualityControl/QcInfoLogger.h"

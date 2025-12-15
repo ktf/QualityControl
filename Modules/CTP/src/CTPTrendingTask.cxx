@@ -60,8 +60,9 @@ void CTPTrendingTask::initCTP(Trigger& t)
   // o2::ctp::CTPConfiguration CTPconfig = o2::ctp::CTPRunManager::getConfigFromCCDB(t.timestamp, run, ok);
   auto& mgr = o2::ccdb::BasicCCDBManager::instance();
   mgr.setURL(CCDBHost);
-  map<string, string> metadata; // can be empty
+  std::map<std::string, std::string> metadata; // can be empty
   metadata["runNumber"] = run;
+  mgr.setFatalWhenNull(false);
   auto ctpconfigdb = mgr.getSpecific<o2::ctp::CTPConfiguration>(o2::ctp::CCDBPathCTPConfig, t.timestamp, metadata);
   if (ctpconfigdb == nullptr) {
     LOG(info) << "CTP config not in database, timestamp:" << t.timestamp;
@@ -79,11 +80,11 @@ void CTPTrendingTask::initCTP(Trigger& t)
   }
 
   for (int i = 0; i < 5; i++) {
-    mClassNames[i] = getFromExtendedConfig<string>(t.activity, mCustomParameters, mClassParameters[i], mClassNamesDefault[i]);
+    mClassNames[i] = getFromExtendedConfig<std::string>(t.activity, mCustomParameters, mClassParameters[i], mClassNamesDefault[i]);
     if (mClassNames[i] == "") {
       mClassNames[i] = mClassNamesDefault[i];
     }
-    mInputNames[i] = getFromExtendedConfig<string>(t.activity, mCustomParameters, mInputParameters[i], mInputNamesDefault[i]);
+    mInputNames[i] = getFromExtendedConfig<std::string>(t.activity, mCustomParameters, mInputParameters[i], mInputNamesDefault[i]);
     if (mInputNames[i] == "") {
       mInputNames[i] = mInputNamesDefault[i];
     }
@@ -125,6 +126,7 @@ void CTPTrendingTask::initCTP(Trigger& t)
 }
 void CTPTrendingTask::initialize(Trigger t, framework::ServiceRegistryRef services)
 {
+  initCTP(t);
 }
 
 void CTPTrendingTask::update(Trigger t, framework::ServiceRegistryRef services)

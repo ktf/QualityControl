@@ -37,9 +37,9 @@
 #include <chrono>
 #include <sstream>
 #include <filesystem>
-#include <unordered_set>
 // boost
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/json_parser/error.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/foreach.hpp>
 #include <utility>
@@ -270,33 +270,6 @@ void CcdbDatabase::storeQO(std::shared_ptr<const o2::quality_control::core::Qual
   handleStorageError(path, result);
 }
 
-void CcdbDatabase::storeQCFC(std::shared_ptr<const o2::quality_control::QualityControlFlagCollection> qcfc)
-{
-  // metadata
-  map<string, string> metadata;
-  metadata[metadata_keys::runNumber] = std::to_string(qcfc->getRunNumber());
-  metadata[metadata_keys::periodName] = qcfc->getPeriodName();
-  metadata[metadata_keys::passName] = qcfc->getPassName();
-  // QC metadata (prefix qc_)
-  addFrameworkMetadata(metadata, qcfc->getDetector(), qcfc->IsA()->GetName());
-  metadata[metadata_keys::qcQCFCName] = qcfc->getName();
-
-  // other attributes
-  string path = RepoPathUtils::getQcfcPath(qcfc.get());
-  auto from = qcfc->getStart();
-  auto to = qcfc->getEnd();
-  if (from > to) {
-    ILOG(Error, Support) << "QCFC '" + qcfc->getName() + "' cannot be stored in CCDB, because it has invalid validity range (" + std::to_string(from) + ", " + std::to_string(to) + ")." << ENDM;
-  }
-  std::stringstream buffer;
-  qcfc->streamTo(buffer);
-  ILOG(Debug, Support) << "Storing QualityControlFlagCollection at " << path << " (" << qcfc->getName() << ")" << ENDM;
-  auto result = ccdbApi->storeAsBinaryFile(buffer.str().c_str(), buffer.str().size(), qcfc->getName(), qcfc->IsA()->GetName(), path, metadata, from, to);
-  if (result != 0) {
-    ILOG(Error, Support) << "QCFC '" + qcfc->getName() + "' could not be stored in CCDB, error: " + std::to_string(result) << ENDM;
-  }
-}
-
 TObject* CcdbDatabase::retrieveTObject(std::string path, std::map<std::string, std::string> const& metadata, long timestamp, std::map<std::string, std::string>* headers)
 {
   if (timestamp == Timestamp::Latest) {
@@ -310,6 +283,10 @@ TObject* CcdbDatabase::retrieveTObject(std::string path, std::map<std::string, s
   auto* object = ccdbApi->retrieveFromTFileAny<TObject>(path, metadata, timestamp, headers);
   if (object == nullptr) {
     ILOG(Warning, Support) << "We could NOT retrieve the object " << path << " with timestamp " << timestamp << "." << ENDM;
+    ILOG(Debug, Support) << "and with metadata:" << ENDM;
+    for (auto [metaKey, metaVal] : metadata) {
+      ILOG(Debug, Support) << metaKey << ", " << metaVal << ENDM;
+    }
     return nullptr;
   }
   ILOG(Debug, Support) << "Retrieved object " << path << " with timestamp " << timestamp << ENDM;
@@ -334,11 +311,14 @@ void* CcdbDatabase::retrieveAny(const type_info& tinfo, const string& path, cons
   return object;
 }
 
-std::shared_ptr<o2::quality_control::core::MonitorObject> CcdbDatabase::retrieveMO(std::string objectPath, std::string objectName, long timestamp, const core::Activity& activity)
+std::shared_ptr<o2::quality_control::core::MonitorObject> CcdbDatabase::retrieveMO(std::string objectPath, std::string objectName,
+                                                                                   long timestamp, const core::Activity& activity,
+                                                                                   const std::map<std::string, std::string>& metadataToRetrieve)
 {
   string fullPath = activity.mProvenance + "/" + objectPath + "/" + objectName;
   map<string, string> headers;
   map<string, string> metadata = activity_helpers::asDatabaseMetadata(activity, false);
+  metadata.insert(metadataToRetrieve.begin(), metadataToRetrieve.end());
   TObject* obj = retrieveTObject(fullPath, metadata, timestamp, &headers);
 
   // no object found
@@ -375,10 +355,13 @@ std::shared_ptr<o2::quality_control::core::MonitorObject> CcdbDatabase::retrieve
   return mo;
 }
 
-std::shared_ptr<o2::quality_control::core::QualityObject> CcdbDatabase::retrieveQO(std::string qoPath, long timestamp, const core::Activity& activity)
+std::shared_ptr<o2::quality_control::core::QualityObject> CcdbDatabase::retrieveQO(std::string qoPath, long timestamp,
+                                                                                   const core::Activity& activity,
+                                                                                   const std::map<std::string, std::string>& metadataToRetrieve)
 {
   map<string, string> headers;
   map<string, string> metadata = activity_helpers::asDatabaseMetadata(activity, false);
+  metadata.insert(metadataToRetrieve.begin(), metadataToRetrieve.end());
   auto fullPath = activity.mProvenance + "/" + qoPath;
   TObject* obj = retrieveTObject(fullPath, metadata, timestamp, &headers);
   if (obj == nullptr) {
@@ -394,62 +377,6 @@ std::shared_ptr<o2::quality_control::core::QualityObject> CcdbDatabase::retrieve
     qo->setActivity(activity_helpers::asActivity(headers, activity.mProvenance));
   }
   return qo;
-}
-
-std::shared_ptr<o2::quality_control::QualityControlFlagCollection> CcdbDatabase::retrieveQCFC(const std::string& qcfcName, const std::string& detector, int runNumber, const string& passName, const string& periodName, const std::string& provenance, long timestamp)
-{
-  map<string, string> headers;
-  map<string, string> metadata;
-  if (runNumber != 0) {
-    metadata[metadata_keys::runNumber] = std::to_string(runNumber);
-  }
-  if (!passName.empty()) {
-    metadata[metadata_keys::passName] = passName;
-  }
-  if (!periodName.empty()) {
-    metadata[metadata_keys::periodName] = periodName;
-  }
-  const auto qcfcPath = RepoPathUtils::getQcfcPath(detector, qcfcName, provenance);
-  const std::string localFileDir = "/tmp";
-  const std::string localFileName = "qcfc_" + qcfcName + std::to_string(time_point_cast<nanoseconds>(system_clock::now()).time_since_epoch().count());
-  const std::string localFilePath = localFileDir + std::filesystem::path::preferred_separator + localFileName;
-  if (localFilePath.find("..") != std::string::npos || localFilePath.find('~') != std::string::npos) {
-    ILOG(Error, Support) << "The path '" << localFilePath << "' looks hacky, will not download any files there." << ENDM;
-    return nullptr;
-  }
-
-  auto resultMetadata = ccdbApi->retrieveHeaders(qcfcPath, metadata, timestamp);
-  if (resultMetadata.empty()) {
-    ILOG(Error, Support) << "Could not extract headers of QCFC at '" << qcfcPath << "' with the metadata: " << ENDM; // TODO
-    ILOG(Error, Support) << " - RunNumber  : " << metadata[metadata_keys::runNumber] << ENDM;
-    ILOG(Error, Support) << " - PassName   : " << metadata[metadata_keys::passName] << ENDM;
-    ILOG(Error, Support) << " - PeriodName : " << metadata[metadata_keys::periodName] << ENDM;
-    return nullptr;
-  }
-
-  auto success = ccdbApi->retrieveBlob(qcfcPath, localFileDir, metadata, timestamp, false, localFileName);
-  if (!success) {
-    ILOG(Error, Support) << "Could not retrieve the QCFC at '" << qcfcPath << "' with the metadata: " << ENDM; // TODO
-    ILOG(Error, Support) << " - RunNumber  : " << metadata[metadata_keys::runNumber] << ENDM;
-    ILOG(Error, Support) << " - PassName   : " << metadata[metadata_keys::passName] << ENDM;
-    ILOG(Error, Support) << " - PeriodName : " << metadata[metadata_keys::periodName] << ENDM;
-    return nullptr;
-  }
-
-  std::ifstream localFile(localFilePath);
-  if (!localFile.is_open()) {
-    ILOG(Error, Support) << "Could not open a file at '" << localFilePath << "'" << ENDM;
-    std::filesystem::remove(localFilePath);
-    return nullptr;
-  }
-
-  QualityControlFlagCollection::RangeInterval validity{ std::stoull(resultMetadata[metadata_keys::validFrom]), std::stoull(resultMetadata[metadata_keys::validUntil]) };
-  auto qcfc = std::make_shared<QualityControlFlagCollection>(qcfcName, detector, validity, runNumber, periodName, passName, provenance);
-  qcfc->streamFrom(localFile);
-  localFile.close();
-  std::filesystem::remove(localFilePath);
-
-  return qcfc;
 }
 
 std::string CcdbDatabase::retrieveJson(std::string path, long timestamp, const std::map<std::string, std::string>& metadata)
@@ -568,7 +495,11 @@ boost::property_tree::ptree CcdbDatabase::getListingAsPtree(const std::string& p
   std::stringstream listingAsStringStream{ getListingAsString(pathWithMetadata.str(), "application/json", latestOnly) };
 
   boost::property_tree::ptree listingAsTree;
-  boost::property_tree::read_json(listingAsStringStream, listingAsTree);
+  try {
+    boost::property_tree::read_json(listingAsStringStream, listingAsTree);
+  } catch (const boost::property_tree::json_parser::json_parser_error&) {
+    ILOG(Error, Support) << "Failed to parse json in CcdbDatabase::getListingAsPtree from data: " << listingAsStringStream.str() << ENDM;
+  }
 
   return listingAsTree;
 }
@@ -616,7 +547,12 @@ std::vector<std::string> CcdbDatabase::getPublishedObjectNames(std::string taskN
   boost::property_tree::ptree pt;
   stringstream ss;
   ss << listing;
-  boost::property_tree::read_json(ss, pt);
+
+  try {
+    boost::property_tree::read_json(ss, pt);
+  } catch (const boost::property_tree::json_parser::json_parser_error&) {
+    ILOG(Error, Support) << "Failed to parse json in CcdbDatabase::getTimestampsForObject from data: " << ss.str() << ENDM;
+  }
 
   BOOST_FOREACH (boost::property_tree::ptree::value_type& v, pt.get_child("objects")) {
     assert(v.first.empty()); // array elements have no names

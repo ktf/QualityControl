@@ -5,7 +5,7 @@ configure_file("include/QualityControl/Version.h.in"
                "${CMAKE_CURRENT_BINARY_DIR}/include/QualityControl/Version.h"
                @ONLY)
 
- # ---- Library for IL ----
+# ---- Library for IL ----
 add_library(O2QualityControlInfoLogger STATIC
   src/QcInfoLogger.cxx
 )
@@ -99,7 +99,6 @@ add_library(O2QualityControl
   src/Check.cxx
   src/Aggregator.cxx
   src/HashDataDescription.cxx
-  src/ServiceDiscovery.cxx
   src/Triggers.cxx
   src/TriggerHelpers.cxx
   src/PostProcessingRunner.cxx
@@ -117,7 +116,6 @@ add_library(O2QualityControl
   src/UpdatePolicyManager.cxx
   src/AdvancedWorkflow.cxx
   src/QualitiesToFlagCollectionConverter.cxx
-  src/Calculators.cxx
   src/DataSourceSpec.cxx
   src/RootFileSink.cxx
   src/RootFileSource.cxx
@@ -137,7 +135,11 @@ add_library(O2QualityControl
   src/RootFileStorage.cxx
   src/ReductorHelpers.cxx
   src/KafkaPoller.cxx
-  src/FlagHelpers.cxx)
+  src/FlagHelpers.cxx
+  src/ObjectMetadataHelpers.cxx
+  src/QCInputsAdapters.cxx
+  src/QCInputsFactory.cxx
+)
 
 target_include_directories(
   O2QualityControl
@@ -202,8 +204,6 @@ set(EXE_SRCS
   src/runRepositoryBenchmark.cxx
   src/runPostProcessing.cxx
   src/runPostProcessingOCC.cxx
-  src/runLocationCalculator.cxx
-  src/runMergerCalculator.cxx
   src/runUploadRootObjects.cxx
   src/runFileMerger.cxx
   src/runMetadataUpdater.cxx
@@ -220,8 +220,6 @@ set(EXE_NAMES
   o2-qc-repository-benchmark
   o2-qc-run-postprocessing
   o2-qc-run-postprocessing-occ
-  o2-qc-location-calculator
-  o2-qc-merger-calculator
   o2-qc-upload-root-objects
   o2-qc-file-merger
   o2-qc-metadata-updater
@@ -240,8 +238,6 @@ set(EXE_OLD_NAMES
   repositoryBenchmark
   qcRunPostProcessing
   qcRunPostProcessingOCC
-  o2-qc-location-calculator
-  o2-qc-merger-calculator
   o2-qc-upload-root-objects
   o2-qc-file-merger
   o2-qc-metadata-updater
@@ -271,7 +267,7 @@ endforeach()
 
 # ---- Tests ----
 
-add_executable(o2-qc-test-core 
+add_executable(o2-qc-test-core
                test/testActivity.cxx
                test/testActivityHelpers.cxx
                test/testAggregatorInterface.cxx
@@ -296,6 +292,7 @@ add_executable(o2-qc-test-core
                test/testKafkaTests.cxx
                test/testFlagHelpers.cxx
                test/testQualitiesToFlagCollectionConverter.cxx
+               test/testQCInputs.cxx
 )
 set_property(TARGET o2-qc-test-core
              PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
@@ -361,7 +358,7 @@ foreach(i RANGE ${count})
   get_filename_component(test_name ${test} NAME)
   string(REGEX REPLACE ".cxx" "" test_name ${test_name})
   string(REPLACE " " ";" arg "${arg}") # make list of string (arguments) out of
-                                       # one string
+  # one string
 
   add_executable(${test_name} ${test})
   set_property(TARGET ${test_name}
@@ -419,7 +416,7 @@ configure_file(batch-test.json.in ${CMAKE_BINARY_DIR}/tests/batch-test.json) # s
 add_test(NAME batch_test COMMAND o2-qc-batch-test.sh)
 set_tests_properties(batch_test PROPERTIES ENVIRONMENT "JSON_DIR=${CMAKE_BINARY_DIR}/tests;UNIQUE_ID=${UNIQUE_ID}")
 set_property(TEST batch_test PROPERTY LABELS slow)
-set_property(TEST batch_test PROPERTY TIMEOUT 45)
+set_property(TEST batch_test PROPERTY TIMEOUT 60)
 
 # ---- Install ----
 

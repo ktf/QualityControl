@@ -345,18 +345,16 @@ Quality TrendCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>*
   Quality result = mQualities.empty() ? Quality::Null : Quality::Good;
   for (auto& [key, quality] : mQualities) {
     (void)key;
-    for (const auto& flag : quality.getFlags()) {
-      result.addFlag(flag.first, flag.second);
-    }
     if (quality.isWorseThan(result)) {
       result.set(quality);
+    }
+    for (const auto& flag : quality.getFlags()) {
+      result.addFlag(flag.first, flag.second);
     }
   }
 
   return result;
 }
-
-std::string TrendCheck::getAcceptedType() { return "TObject"; }
 
 static void drawThresholds(TGraph* graph, const std::vector<std::pair<double, std::pair<double, double>>>& thresholds, int lineColor, int lineStyle)
 {
@@ -436,6 +434,9 @@ void TrendCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult
 
     auto graphName = moName + "_" + std::to_string(graphIndex);
 
+    if (!mQualities.contains(graphName)) {
+      continue;
+    }
     Quality quality = mQualities[graphName];
 
     if (mThresholdsTrendMedium.count(graphName) > 0) {

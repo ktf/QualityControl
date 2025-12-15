@@ -20,15 +20,16 @@
 #include <Framework/CompletionPolicyHelpers.h>
 #include <Framework/DeviceSpec.h>
 #include <DataFormatsQualityControl/QualityControlFlagCollection.h>
-#include "QualityControl/Bookkeeping.h"
 #include "QualityControl/QualitiesToFlagCollectionConverter.h"
 #include "QualityControl/QualityObject.h"
 #include "QualityControl/QcInfoLogger.h"
+#include "QualityControl/runnerUtils.h"
+
 #include <BookkeepingApi/QcFlagServiceClient.h>
-#include <BookkeepingApi/BkpClientFactory.h>
 #include <CCDB/BasicCCDBManager.h>
 #include <stdexcept>
 #include <utility>
+#include <QualityControl/Bookkeeping.h>
 
 namespace o2::quality_control::core
 {
@@ -42,10 +43,30 @@ void BookkeepingQualitySink::customizeInfrastructure(std::vector<framework::Comp
   policies.emplace_back(CompletionPolicyHelpers::consumeWhenAny("BookkeepingQualitySinkCompletionPolicy", matcher));
 }
 
+void BookkeepingQualitySink::init(framework::InitContext& iCtx)
+{
+  Bookkeeping::getInstance().init(mGrpcUri);
+  initInfologger(iCtx, {}, "bkqsink/", "");
+
+  try { // registering state machine callbacks
+    iCtx.services().get<framework::CallbackService>().set<framework::CallbackService::Id::Start>([this, services = iCtx.services()]() mutable { start(services); });
+  } catch (o2::framework::RuntimeErrorRef& ref) {
+    ILOG(Error) << "Error during initialization: " << o2::framework::error_from_ref(ref).what << ENDM;
+  }
+
+  ILOG(Info, Devel) << "Initialized BookkeepingQualitySink" << ENDM;
+}
+
+void BookkeepingQualitySink::start(framework::ServiceRegistryRef services)
+{
+  Activity fallback; // no proper fallback as we don't have the config in this device
+  auto currentActivity = computeActivity(services, fallback);
+  QcInfoLogger::setRun(currentActivity.mId);
+}
+
 void BookkeepingQualitySink::send(const std::string& grpcUri, const BookkeepingQualitySink::FlagsMap& flags, Provenance provenance)
 {
-  auto bkpClient = o2::bkp::api::BkpClientFactory::create(grpcUri);
-  auto& qcClient = bkpClient->qcFlag();
+  auto& bkpClient = o2::quality_control::core::Bookkeeping::getInstance();
 
   std::optional<int> runNumber;
   std::optional<std::string> passName;
@@ -98,20 +119,19 @@ void BookkeepingQualitySink::send(const std::string& grpcUri, const BookkeepingQ
     try {
       switch (provenance) {
         case Provenance::SyncQC:
-          qcClient->createForSynchronous(runNumber.value(), detector, bkpQcFlags);
+          bkpClient.sendFlagsForSynchronous(runNumber.value(), detector, bkpQcFlags);
           break;
         case Provenance::AsyncQC:
-          qcClient->createForDataPass(runNumber.value(), passName.value(), detector, bkpQcFlags);
+          bkpClient.sendFlagsForDataPass(runNumber.value(), passName.value(), detector, bkpQcFlags);
           break;
         case Provenance::MCQC:
-          qcClient->createForSimulationPass(runNumber.value(), periodName.value(), detector, bkpQcFlags);
+          bkpClient.sendFlagsForSimulationPass(runNumber.value(), periodName.value(), detector, bkpQcFlags);
           break;
       }
+      ILOG(Info, Support) << "Sent " << bkpQcFlags.size() << " flags for detector '" << detector << "'" << ENDM;
     } catch (const std::runtime_error& err) {
-      ILOG(Error, Support) << "Failed to send flags for detector: " << detector
-                           << " with error: " << err.what() << ENDM;
+      ILOG(Error, Support) << "Encountered errors while sending flags for detector '" << detector << "', details: " << err.what() << ENDM;
     }
-    ILOG(Info, Support) << "Sent " << bkpQcFlags.size() << " flags for detector: " << detector << ENDM;
   }
 }
 

@@ -10,11 +10,11 @@
 // or submit itself to any jurisdiction.
 
 #include "QualityControl/CustomParameters.h"
-#include <DataFormatsParameters/ECSDataAdapters.h>
 #include <iostream>
 #include <boost/property_tree/ptree.hpp>
 #include <string_view>
 #include <vector>
+#include <boost/property_tree/json_parser.hpp>
 
 namespace o2::quality_control::core
 {
@@ -94,6 +94,31 @@ std::optional<std::string> CustomParameters::atOptional(const std::string& key, 
 std::optional<std::string> CustomParameters::atOptional(const std::string& key, const Activity& activity) const
 {
   return atOptional(key, activity.mType, activity.mBeamType);
+}
+
+std::optional<boost::property_tree::ptree> CustomParameters::getOptionalPtree(const std::string& key, const std::string& runType, const std::string& beamType) const
+{
+  std::optional<boost::property_tree::ptree> result = std::nullopt;
+
+  // get the text and make it a ptree
+  auto text = atOptional(key, runType, beamType);
+  if (text.has_value()) {
+    std::stringstream listingAsStringStream{ text.value() };
+    boost::property_tree::ptree pt;
+    try {
+      boost::property_tree::read_json(listingAsStringStream, pt);
+    } catch (const boost::property_tree::json_parser::json_parser_error& e) {
+      return result;
+    }
+    result = pt;
+  }
+
+  return result;
+}
+
+std::optional<boost::property_tree::ptree> CustomParameters::getOptionalPtree(const std::string& key, const Activity& activity) const
+{
+  return getOptionalPtree(key, activity.mType, activity.mBeamType);
 }
 
 std::string CustomParameters::atOrDefaultValue(const std::string& key, std::string defaultValue, const std::string& runType, const std::string& beamType) const
@@ -177,7 +202,20 @@ void CustomParameters::populateCustomParameters(const boost::property_tree::ptre
   for (const auto& [runtype, subTreeRunType] : tree) {
     for (const auto& [beamtype, subTreeBeamType] : subTreeRunType) {
       for (const auto& [key, value] : subTreeBeamType) {
-        set(key, value.get_value<std::string>(), runtype, beamtype);
+        // Check if value has children (thus it is json)
+        if (value.empty()) { // just a simple value
+          set(key, value.get_value<std::string>(), runtype, beamtype);
+        } else {
+          // It's some json, serialize it to string
+          std::stringstream ss;
+          boost::property_tree::write_json(ss, value, false);
+          std::string jsonString = ss.str();
+          // Remove trailing newline if present
+          if (!jsonString.empty() && jsonString.back() == '\n') {
+            jsonString.pop_back();
+          }
+          set(key, jsonString, runtype, beamtype);
+        }
       }
     }
   }

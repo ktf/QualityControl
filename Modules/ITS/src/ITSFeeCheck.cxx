@@ -143,7 +143,7 @@ Quality ITSFeeCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>
       }
     }
 
-    if (((string)mo->getName()).find("TriggerVsFeeid") != std::string::npos) {
+    if (((std::string)mo->getName()).find("TriggerVsFeeid") != std::string::npos) {
       result.set(Quality::Good);
       auto* h = dynamic_cast<TH2I*>(mo->getObject());
       if (h == nullptr) {
@@ -151,8 +151,8 @@ Quality ITSFeeCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>
         continue;
       }
 
-      std::vector<int> skipbins = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "skipbinstrg", skipbinstrg));
-      std::vector<int> skipfeeid = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "skipfeeids", skipfeeids));
+      std::vector<int> skipbins = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "skipbinstrg", skipbinstrg));
+      std::vector<int> skipfeeid = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "skipfeeids", skipfeeids));
       maxtfdifference = o2::quality_control_modules::common::getFromConfig<int>(mCustomParameters, "maxTFdifferenceAllowed", maxtfdifference);
 
       for (int itrg = 1; itrg <= h->GetNbinsY(); itrg++) {
@@ -230,7 +230,7 @@ Quality ITSFeeCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>
       result.set(Quality::Good);
       result.addMetadata("CheckTechnicals", "good");
       result.addMetadata("CheckTechnicalsFeeid", "good");
-      std::vector<int> skipfeeid = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "skipfeeids", skipfeeids));
+      std::vector<int> skipfeeid = convertToArray<int>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "skipfeeids", skipfeeids));
       minPayloadSize = o2::quality_control_modules::common::getFromConfig<int>(mCustomParameters, "minPayloadSize", minPayloadSize);
       if (h->Integral(1, 432, h->GetYaxis()->FindBin(minPayloadSize), h->GetYaxis()->GetLast()) > 0) {
         result.set(Quality::Bad);
@@ -251,7 +251,9 @@ Quality ITSFeeCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>
       }
     }
 
-    if (((string)mo->getName()).find("TrailerCount") != std::string::npos) {
+    if (((std::string)mo->getName()).find("TrailerCount") != std::string::npos) {
+
+      auto activity = mo->getActivity();
       auto* h = dynamic_cast<TH2I*>(mo->getObject());
       if (h == nullptr) {
         ILOG(Error, Support) << "could not cast TrailerCount to TH2I*" << ENDM;
@@ -259,7 +261,7 @@ Quality ITSFeeCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>
       }
       result.set(Quality::Good);
       result.addMetadata("CheckROFRate", "good");
-      expectedROFperOrbit = o2::quality_control_modules::common::getFromConfig<int>(mCustomParameters, "expectedROFperOrbit", expectedROFperOrbit);
+      expectedROFperOrbit = stoi(mCustomParameters.at("expectedROFperOrbit", activity));
       if (h->Integral(1, 432, 1, h->GetYaxis()->FindBin(expectedROFperOrbit) - 1) > 0 || h->Integral(1, 432, h->GetYaxis()->FindBin(expectedROFperOrbit) + 1, h->GetYaxis()->GetLast()) > 0) {
         result.set(Quality::Bad);
         result.updateMetadata("expectedROFperOrbit", "bad");
@@ -270,13 +272,11 @@ Quality ITSFeeCheck::check(std::map<std::string, std::shared_ptr<MonitorObject>>
   return result;
 } // end check
 
-std::string ITSFeeCheck::getAcceptedType() { return "TH2I, TH2Poly"; }
-
 void ITSFeeCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult)
 {
-  std::vector<string> vPlotWithTextMessage = convertToArray<string>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "plotWithTextMessage", ""));
-  std::vector<string> vTextMessage = convertToArray<string>(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "textMessage", ""));
-  std::map<string, string> ShifterInfoText;
+  std::vector<std::string> vPlotWithTextMessage = convertToArray<std::string>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "plotWithTextMessage", ""));
+  std::vector<std::string> vTextMessage = convertToArray<std::string>(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "textMessage", ""));
+  std::map<std::string, std::string> ShifterInfoText;
 
   if ((int)vTextMessage.size() == (int)vPlotWithTextMessage.size()) {
     for (int i = 0; i < (int)vTextMessage.size(); i++) {
@@ -446,7 +446,7 @@ void ITSFeeCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResul
   }
 
   // trigger plot
-  if (((string)mo->getName()).find("TriggerVsFeeid") != std::string::npos) {
+  if (((std::string)mo->getName()).find("TriggerVsFeeid") != std::string::npos) {
     auto* h = dynamic_cast<TH2I*>(mo->getObject());
     if (h == nullptr) {
       ILOG(Error, Support) << "could not cast TriggerVsFeeId to TH2I*" << ENDM;
@@ -521,7 +521,7 @@ void ITSFeeCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResul
       h->GetListOfFunctions()->Add(tShifterInfo->Clone());
   }
 
-  if (((string)mo->getName()).find("TrailerCount") != std::string::npos) {
+  if (((std::string)mo->getName()).find("TrailerCount") != std::string::npos) {
     auto* h = dynamic_cast<TH2I*>(mo->getObject());
     if (h == nullptr) {
       ILOG(Error, Support) << "could not cast TrailerCount to TH2F*" << ENDM;

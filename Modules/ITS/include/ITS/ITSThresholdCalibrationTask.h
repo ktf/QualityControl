@@ -28,6 +28,14 @@ class TH2D;
 
 using namespace o2::quality_control::core;
 
+enum {
+  VCASN,
+  ITHR,
+  THR,
+  pixel,
+  TOT
+};
+
 namespace o2::quality_control_modules::its
 {
 
@@ -51,8 +59,8 @@ class ITSThresholdCalibrationTask : public TaskInterface
     float status;
     float Tot;    // time over threshold
     float TotRms; // time over threshold rms
-    float Rt;     // rise time
-    float RtRms;  // rise time rms
+    float ToA;    // time of arrival
+    float ToARms; // time of arrival rms
   };
   struct CalibrationResStructPixel {
     int Layer;
@@ -83,11 +91,11 @@ class ITSThresholdCalibrationTask : public TaskInterface
   Int_t getBarrel(Int_t iLayer);
   int getCurrentChip(int barrel, int chipid, int hic, int hs);
 
-  void doAnalysisTHR(string inString, int iScan);
-  void doAnalysisPixel(string inString);
+  void doAnalysisTHR(std::string inString, int iScan);
+  void doAnalysisPixel(std::string inString);
 
-  CalibrationResStructTHR CalibrationParserTHR(string input);
-  CalibrationResStructPixel CalibrationParserPixel(string input);
+  CalibrationResStructTHR CalibrationParserTHR(std::string input);
+  CalibrationResStructPixel CalibrationParserPixel(std::string input);
 
   std::vector<TObject*> mPublishedObjects;
 
@@ -105,6 +113,7 @@ class ITSThresholdCalibrationTask : public TaskInterface
   TString sScanTypes[3] = { "VCASN", "ITHR", "THR" };
   TString sCalibrationType[3] = { "Noisy", "Dead", "Ineff" };
   TString sBarrelType[3] = { "IB", "ML", "OL" };
+  int CalibType = 0; // THR
   Int_t nChips[3] = { 9, 112, 196 };
   Int_t nStaves[3] = { 48, 54, 90 };
   Int_t nXmax[3] = { 130, 100, 450 };
@@ -117,15 +126,17 @@ class ITSThresholdCalibrationTask : public TaskInterface
   TH2F *hCalibrationThrNoiseRMSChipAverage[3], *hCalibrationThrNoiseChipAverage[3];
   // TH2F *hCalibrationDeadColumns[3], *hCalibrationDeadPixels[3];
   TH2D* hCalibrationDColChipAverage[3];
-  TH2D* hCalibrationPixelpAverage[3][3];
+  TH2D* hCalibrationPixel_dead[3];
+  TH2D* hCalibrationPixel_noise[3];
+  TH2D* hCalibrationPixel_inEff[3];
 
   TH2F* hUnsuccess[3];
   TH1F *hCalibrationLayer[NLayer][3], *hCalibrationRMSLayer[NLayer][3];
   TH1F *hCalibrationThrNoiseLayer[NLayer], *hCalibrationThrNoiseRMSLayer[NLayer];
 
   // Histograms for pulse-length scan
-  TH2F *hTimeOverThreshold[3], *hTimeOverThresholdRms[3], *hRiseTime[3], *hRiseTimeRms[3];
-  TH1F *hTimeOverThresholdLayer[NLayer], *hTimeOverThresholdRmsLayer[NLayer], *hRiseTimeLayer[NLayer], *hRiseTimeRmsLayer[NLayer];
+  TH2F *hTimeOverThreshold[3], *hTimeOverThresholdRms[3], *hToA[3], *hToARms[3];
+  TH1F *hTimeOverThresholdLayer[NLayer], *hTimeOverThresholdRmsLayer[NLayer], *hToALayer[NLayer], *hToARmsLayer[NLayer];
 
   o2::itsmft::ChipMappingITS mp;
 };

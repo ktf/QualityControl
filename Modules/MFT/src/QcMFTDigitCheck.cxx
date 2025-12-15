@@ -16,6 +16,8 @@
 /// \author Katarina Krizkova Gajdosova
 /// \author Diana Maria Krupova
 /// \author David Grund
+/// \author Sara Haidlova
+/// \author Jakub Juracka
 ///
 
 // C++
@@ -177,41 +179,67 @@ Quality QcMFTDigitCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
           ILOG(Error, Support) << "Could not cast mDigitChipMap to TH2F." << ENDM;
           return Quality::Null;
         }
-        // loop over bins in each chip map
+        // loop over bins in occupancy maps
         for (int iBinX = 0; iBinX < hDigitChipOccupancyMap->GetNbinsX(); iBinX++) {
-          isEmpty = true;
+          int emptyValidChips = 0;
+          bool hasNonEmptyChip = false;
+
           for (int iBinY = 0; iBinY < hDigitChipOccupancyMap->GetNbinsY(); iBinY++) {
+            // Check if the bin contains data before further checks
             if (hDigitChipOccupancyMap->GetBinContent(iBinX + 1, iBinY + 1) != 0) {
-              isEmpty = false; // if there is an unempty bin, the ladder is not empty
-              break;
-            } else {
-              // check if empty ladders are masked
-              for (int i = 0; i < mMaskedChips.size(); i++) {
-                if (mo->getName().find(mChipMapName[i]) != std::string::npos) {
-                  if (iBinX + 1 == hDigitChipOccupancyMap->GetXaxis()->FindBin(mX[mMaskedChips[i]]) && iBinY + 1 == hDigitChipOccupancyMap->GetYaxis()->FindBin(mY[mMaskedChips[i]])) {
-                    isEmpty = false;
-                  } else {
-                    isEmpty = true;
+              hasNonEmptyChip = true;
+              break; // Exit early if a non-empty chip is found (most of them should be non-empty)
+            }
+
+            bool isMasked = false;
+            bool isOutsideAcc = false;
+
+            // Check if chip is outside acceptance
+            for (int k = 0; k < 21; k++) {
+              if (mo->getName().find(MFTTable.mDigitChipMapNames[i]) != std::string::npos) {
+                if (iBinX + 1 == MFTTable.mBinX[i][k] && iBinY + 1 == MFTTable.mBinY[i][k]) {
+                  isOutsideAcc = true;
+                  break;
+                }
+              }
+            }
+
+            // Check if chip is masked if it is in detector acceptance
+            if (!isOutsideAcc) {
+              for (int j = 0; j < mMaskedChips.size(); j++) {
+                if (mo->getName().find(mChipMapName[j]) != std::string::npos) {
+                  int maskedX = hDigitChipOccupancyMap->GetXaxis()->FindBin(mX[mMaskedChips[j]]);
+                  int maskedY = hDigitChipOccupancyMap->GetYaxis()->FindBin(mY[mMaskedChips[j]]);
+                  if (iBinX + 1 == maskedX && iBinY + 1 == maskedY) {
+                    isMasked = true;
+                    break; // break the loop if you find the bin in the masked list
                   }
                 }
               }
             }
+
+            // If chip is not masked and not outside acceptance, count it
+            if (!isMasked && !isOutsideAcc) {
+              emptyValidChips++;
+            }
           }
-          // count empty ladders
+
+          // Determine if column is empty
+          isEmpty = (emptyValidChips > 0 && !hasNonEmptyChip);
+
           if (isEmpty) {
             mEmptyCount++;
             adjacentCount++;
           } else {
             adjacentCount = 0;
           }
-          // set bool for adjacent ladders
+
           if (adjacentCount >= mLadderThresholdBad) {
             mAdjacentLaddersEmpty = true;
           }
         }
       }
     }
-
     if (mo->getName() == "mDigitOccupancySummary") {
       auto* hDigitOccupancySummary = dynamic_cast<TH2F*>(mo->getObject());
       if (hDigitOccupancySummary == nullptr) {
@@ -243,7 +271,6 @@ Quality QcMFTDigitCheck::check(std::map<std::string, std::shared_ptr<MonitorObje
   }
   return result;
 }
-std::string QcMFTDigitCheck::getAcceptedType() { return "TH1"; }
 
 void QcMFTDigitCheck::readMaskedChips(std::shared_ptr<MonitorObject> mo)
 {
@@ -324,8 +351,8 @@ void QcMFTDigitCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkR
       auto* hMap = dynamic_cast<TH2F*>(mo->getObject());
       int binCx = hMap->GetXaxis()->FindBin(mX[mMaskedChips[i]]);
       int binCy = hMap->GetYaxis()->FindBin(mY[mMaskedChips[i]]);
-      // the -0.5 is a shift to centre better the skulls
-      TLatex* tl = new TLatex(hMap->GetXaxis()->GetBinCenter(binCx) - 0.5, hMap->GetYaxis()->GetBinCenter(binCy), "N");
+      TLatex* tl = new TLatex(hMap->GetXaxis()->GetBinCenter(binCx), hMap->GetYaxis()->GetBinCenter(binCy), "N");
+      tl->SetTextAlign(22);
       tl->SetTextFont(142);
       tl->SetTextSize(0.08);
       hMap->GetListOfFunctions()->Add(tl);
@@ -381,18 +408,15 @@ void QcMFTDigitCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkR
         }
       }
       // quality of a noise scan
-      bool isTotalNoiseGood = (mTotalNoisy < mNoiseTotalMediumMax) && (mTotalNoisy > mNoiseTotalMediumMin);
-      bool isNewNoiseGood = (mNewNoisy < mNoiseNewMediumMax) && (mNewNoisy > mNoiseNewMediumMin);
-      bool isDisNoiseGood = (mDisNoisy < mNoiseDisMediumMax) && (mDisNoisy > mNoiseDisMediumMin);
-      bool isTotalNoiseMedium = (mTotalNoisy > mNoiseTotalMediumMax && mTotalNoisy < mNoiseTotalBadMax) ||
-                                (mTotalNoisy > mNoiseTotalBadMin && mTotalNoisy < mNoiseTotalMediumMin);
-      bool isNewNoiseMedium = (mNewNoisy < mNoiseNewMediumMin) ||
-                              (mNewNoisy > mNoiseNewMediumMax && mNewNoisy < mNoiseNewBadMax);
-      bool isDisNoiseMedium = (mDisNoisy < mNoiseDisMediumMin) ||
-                              (mDisNoisy > mNoiseDisMediumMax && mDisNoisy < mNoiseDisBadMax);
-      bool isTotalNoiseBad = (mTotalNoisy > mNoiseTotalBadMax) || (mTotalNoisy < mNoiseTotalBadMin);
-      bool isNewNoiseBad = mNewNoisy > mNoiseNewBadMax;
-      bool isDisNoiseBad = mDisNoisy > mNoiseDisBadMax;
+      bool isTotalNoiseGood = (mNoiseTotalMediumMin <= mTotalNoisy) && (mTotalNoisy <= mNoiseTotalMediumMax);
+      bool isNewNoiseGood = (mNoiseNewMediumMin <= mNewNoisy) && (mNewNoisy <= mNoiseNewMediumMax);
+      bool isDisNoiseGood = (mNoiseDisMediumMin <= mDisNoisy) && (mDisNoisy <= mNoiseDisMediumMax);
+      bool isTotalNoiseMedium = (mNoiseTotalBadMin <= mTotalNoisy && mTotalNoisy < mNoiseTotalMediumMin) || (mNoiseTotalMediumMax < mTotalNoisy && mTotalNoisy <= mNoiseTotalBadMax);
+      bool isNewNoiseMedium = (mNewNoisy < mNoiseNewMediumMin) || (mNoiseNewMediumMax < mNewNoisy && mNewNoisy <= mNoiseNewBadMax);
+      bool isDisNoiseMedium = (mDisNoisy < mNoiseDisMediumMin) || (mNoiseDisMediumMax < mDisNoisy && mDisNoisy <= mNoiseDisBadMax);
+      bool isTotalNoiseBad = (mTotalNoisy < mNoiseTotalBadMin) || (mNoiseTotalBadMax < mTotalNoisy);
+      bool isNewNoiseBad = mNoiseNewBadMax < mNewNoisy;
+      bool isDisNoiseBad = mNoiseDisBadMax < mDisNoisy;
 
       if (isTotalNoiseGood && isNewNoiseGood && isDisNoiseGood) {
         mQualityGood = true;

@@ -45,7 +45,7 @@ void SliceTrendingTask::configure(const boost::property_tree::ptree& config)
   mConfig = SliceTrendingTaskConfig(getID(), config);
 }
 
-void SliceTrendingTask::initialize(Trigger, framework::ServiceRegistryRef services)
+void SliceTrendingTask::initialize(Trigger t, framework::ServiceRegistryRef services)
 {
   // removing leftovers from any previous runs
   mTrend.reset();
@@ -145,11 +145,13 @@ void SliceTrendingTask::trendValues(const Trigger& t,
     mTime = t.activity.mValidity.getMax() / 1000;
   }
   mMetaData.runNumber = t.activity.mId;
+  std::snprintf(mMetaData.runNumberStr, MaxRunNumberStringLength + 1, "%d", t.activity.mId);
+
   for (auto& dataSource : mConfig.dataSources) {
     mNumberPads[dataSource.name] = 0;
     mSources[dataSource.name]->clear();
     if (dataSource.type == "repository") {
-      auto mo = qcdb.retrieveMO(dataSource.path, dataSource.name, t.timestamp, t.activity);
+      auto mo = qcdb.retrieveMO(dataSource.path, dataSource.name, t.timestamp, t.activity, t.metadata);
       TObject* obj = mo ? mo->getObject() : nullptr;
 
       mAxisDivision[dataSource.name] = dataSource.axisDivision;
@@ -400,7 +402,8 @@ void SliceTrendingTask::drawCanvasMO(TCanvas* thisCanvas, const std::string& var
     } // for (int p = 0; p < nuPa; p++)
 
     thisCanvas->cd(1);
-    multigraph->Draw("A pmc plc");
+    std::string drawOpt = opt.empty() ? "A*L PMC PLC" : opt;
+    multigraph->Draw(drawOpt.c_str());
 
     auto legend = new TLegend(0., 0.1, 0.95, 0.9);
     legend->SetName("MultiGraphLegend");

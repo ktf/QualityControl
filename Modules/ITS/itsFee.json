@@ -9,8 +9,9 @@
                 "name": "not_applicable"
             },
             "Activity": {
-                "number": "42",
-                "type": "NONE"
+		        "number": "42",        
+		        "type": "PHYSICS",     
+        		"beamType" : "PbPb",     "": "Beam type: `pp`, `PbPb`, `pPb` "
             },
             "monitoring": {
                 "url": "infologger:///debug?qc"
@@ -42,7 +43,8 @@
 		    "PayloadParsingEvery_n_HBFperTF": "0",
 		    "PayloadParsingEvery_n_TF": "1",
 		    "DecodeCDW": "0",
-		    "nResetCycle": "3"
+		    "nResetCycle": "3",
+		    "precisePayload": "1"
                 }
             }
         },
@@ -66,6 +68,27 @@
                   "plotWithTextMessage": "",
                   "textMessage": "" 
                 },
+		"extendedCheckParameters": {
+          	"default": {
+            		"default": {
+              			"expectedROFperOrbit": "18"
+            		}
+          	},
+          	"PHYSICS": {
+            		"default": {
+              			"expectedROFperOrbit": "18"
+            		},
+                "pp": {
+              			"expectedROFperOrbit": "18"
+            		},
+            		"PbPb": {
+              			"expectedROFperOrbit": "6"
+            		}
+          	},
+          		"COSMICS": {
+            			"expectedROFperOrbit": "18"
+          		}
+        	},
                 "dataSource": [
                     {
                         "type": "Task",

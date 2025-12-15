@@ -33,7 +33,6 @@
 // QC
 #include "QualityControl/DatabaseFactory.h"
 #include "QualityControl/QcInfoLogger.h"
-#include "QualityControl/ServiceDiscovery.h"
 #include "QualityControl/Aggregator.h"
 #include "QualityControl/runnerUtils.h"
 #include "QualityControl/InfrastructureSpecReader.h"
@@ -73,9 +72,6 @@ AggregatorRunner::AggregatorRunner(AggregatorRunnerConfig arc, const std::vector
 AggregatorRunner::~AggregatorRunner()
 {
   ILOG(Debug, Trace) << "AggregatorRunner destructor (" << this << ")" << ENDM;
-  if (mServiceDiscovery != nullptr) {
-    mServiceDiscovery->deregister();
-  }
 }
 
 void AggregatorRunner::prepareInputs()
@@ -127,7 +123,6 @@ void AggregatorRunner::init(framework::InitContext& iCtx)
     }
     initDatabase();
     initMonitoring();
-    initServiceDiscovery();
     initAggregators();
   } catch (...) {
     ILOG(Fatal) << "Unexpected exception during initialization: "
@@ -179,7 +174,7 @@ AggregatorRunner::QualityObjectsWithAggregatorNameVector AggregatorRunner::aggre
     ILOG(Info, Devel) << "Processing aggregator: " << aggregatorName << ENDM;
 
     if (mUpdatePolicyManager.isReady(aggregatorName)) {
-      ILOG(Info, Devel) << "   Quality Objects for the aggregator '" << aggregatorName << "' are  ready, aggregating" << ENDM;
+      ILOG(Info, Devel) << "   Quality Objects for the aggregator '" << aggregatorName << "' are ready, aggregating" << ENDM;
       auto newQOs = aggregator->aggregate(mQualityObjects, *mActivity); // we give the whole list
       mTotalNumberObjectsProduced += newQOs.size();
       mTotalNumberAggregatorExecuted++;
@@ -219,7 +214,7 @@ void AggregatorRunner::store(QualityObjectsWithAggregatorNameVector& qualityObje
 
     if (!qualityObjectsWithAggregatorNames.empty() && !qualityObjectsWithAggregatorNames.front().second.empty()) {
       const auto& qo = qualityObjectsWithAggregatorNames.front().second.front();
-      ILOG(Info, Devel) << "Validity of QO '" << qo->GetName() << "' is (" << qo->getValidity().getMin() << ", " << qo->getValidity().getMax() << ")" << ENDM;
+      ILOG(Debug, Devel) << "Validity of QO '" << qo->GetName() << "' is (" << qo->getValidity().getMin() << ", " << qo->getValidity().getMax() << ")" << ENDM;
     }
 
   } catch (boost::exception& e) {
@@ -251,18 +246,6 @@ void AggregatorRunner::initMonitoring()
   mCollector->addGlobalTag(tags::Key::Subsystem, tags::Value::QC);
   mCollector->addGlobalTag("AggregatorRunnerName", mDeviceName);
   mTimer.reset(1000000); // 10 s.
-}
-
-void AggregatorRunner::initServiceDiscovery()
-{
-  auto consulUrl = mRunnerConfig.consulUrl;
-  if (consulUrl.empty()) {
-    mServiceDiscovery = nullptr;
-    ILOG(Warning, Support) << "Service Discovery disabled" << ENDM;
-    return;
-  }
-  mServiceDiscovery = std::make_shared<ServiceDiscovery>(consulUrl, mDeviceName, mDeviceName);
-  ILOG(Info, Devel) << "ServiceDiscovery initialized";
 }
 
 void AggregatorRunner::initAggregators()
@@ -395,7 +378,7 @@ void AggregatorRunner::start(ServiceRegistryRef services)
   }
 
   // register ourselves to the BK
-  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+  if (!gSystem->Getenv("O2_QC_DONT_REGISTER_IN_BK")) { // Set this variable to disable the registration
     ILOG(Debug, Devel) << "Registering aggregator to BookKeeping" << ENDM;
     try {
       Bookkeeping::getInstance().registerProcess(mActivity->mId, mDeviceName, AggregatorRunner::getDetectorName(mAggregators), bkp::DplProcessType::QC_AGGREGATOR, "");

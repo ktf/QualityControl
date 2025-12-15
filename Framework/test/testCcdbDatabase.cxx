@@ -15,6 +15,7 @@
 /// \author Barthelemy von Haller
 ///
 
+#include "QualityControl/Activity.h"
 #include "QualityControl/CcdbDatabase.h"
 #include "QualityControl/QcInfoLogger.h"
 #include "QualityControl/Version.h"
@@ -24,6 +25,7 @@
 #define BOOST_TEST_DYN_LINK
 
 #include <boost/test/unit_test.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <TH1F.h>
 #include "QualityControl/RepoPathUtils.h"
 #include "QualityControl/ObjectMetadataKeys.h"
@@ -129,6 +131,18 @@ BOOST_AUTO_TEST_CASE(ccdb_store)
   shared_ptr<MonitorObject> mo4 = make_shared<MonitorObject>(h4, f.taskName, "TestClass", "TST");
   mo4->updateActivity(1234, "LHC66", "passName1", "qc_hello");
 
+  TH1F* h5 = new TH1F("cycle", "asdf", 100, 0, 99);
+  shared_ptr<MonitorObject> mo5 = make_shared<MonitorObject>(h5, f.taskName, "TestClass", "TST");
+  mo5->addMetadata(metadata_keys::cycleNumber, "1");
+  mo5->setValidity({ 10000, 20000 });
+  mo5->updateActivity(1234, "LHC66", "passName1", "qc");
+
+  TH1F* h6 = new TH1F("cycle", "asdf", 100, 0, 99);
+  shared_ptr<MonitorObject> mo6 = make_shared<MonitorObject>(h6, f.taskName, "TestClass", "TST");
+  mo6->addMetadata(metadata_keys::cycleNumber, "2");
+  mo6->setValidity({ 10000, 20000 });
+  mo6->updateActivity(1234, "LHC66", "passName1", "qc");
+
   shared_ptr<QualityObject> qo1 = make_shared<QualityObject>(Quality::Bad, f.taskName + "/test-ccdb-check", "TST", "OnAll", vector{ string("input1"), string("input2") });
   qo1->updateActivity(1234, "LHC66", "passName1", "qc");
   shared_ptr<QualityObject> qo2 = make_shared<QualityObject>(Quality::Null, f.taskName + "/metadata", "TST", "OnAll", vector{ string("input1") });
@@ -141,6 +155,9 @@ BOOST_AUTO_TEST_CASE(ccdb_store)
   f.backend->storeMO(mo1);
   f.backend->storeMO(mo2);
   f.backend->storeMO(mo4);
+  f.backend->storeMO(mo5);
+  f.backend->storeMO(mo6);
+
   f.backend->storeQO(qo1);
   f.backend->storeQO(qo2);
   f.backend->storeQO(qo4);
@@ -210,6 +227,23 @@ BOOST_AUTO_TEST_CASE(ccdb_retrieve_inexisting_mo)
   BOOST_CHECK(mo == nullptr);
 }
 
+BOOST_AUTO_TEST_CASE(ccdb_retrieve_mo_with_cycle, *utf::depends_on("ccdb_store"))
+{
+  test_fixture f;
+  std::shared_ptr<MonitorObject> mo{};
+  mo = f.backend->retrieveMO(f.getMoFolder("cycle"), "cycle",
+                             15000, Activity{}, { { metadata_keys::cycleNumber, "1" } });
+  BOOST_REQUIRE(mo.get() != nullptr);
+  BOOST_REQUIRE_NO_THROW(mo->getMetadata(metadata_keys::cycleNumber));
+  BOOST_REQUIRE(mo->getMetadata(metadata_keys::cycleNumber) == "1");
+
+  mo = f.backend->retrieveMO(f.getMoFolder("cycle"), "cycle",
+                             15000, Activity{}, { { metadata_keys::cycleNumber, "2" } });
+  BOOST_REQUIRE(mo.get() != nullptr);
+  BOOST_REQUIRE_NO_THROW(mo->getMetadata(metadata_keys::cycleNumber));
+  BOOST_REQUIRE(mo->getMetadata(metadata_keys::cycleNumber) == "2");
+}
+
 BOOST_AUTO_TEST_CASE(ccdb_retrieve_qo, *utf::depends_on("ccdb_store"))
 {
   test_fixture f;
@@ -221,6 +255,14 @@ BOOST_AUTO_TEST_CASE(ccdb_retrieve_qo, *utf::depends_on("ccdb_store"))
   BOOST_CHECK_EQUAL(qo->getActivity().mPeriodName, "LHC66");
   BOOST_CHECK_EQUAL(qo->getActivity().mPassName, "passName1");
   BOOST_CHECK_EQUAL(qo->getActivity().mProvenance, "qc");
+
+  qo = f.backend->retrieveQO(RepoPathUtils::getQoPath("TST", f.taskName + "/metadata", "", {}, "", false), repository::CcdbDatabase::Timestamp::Current, {}, { { "my_meta", "is_good" } });
+  BOOST_REQUIRE_NE(qo, nullptr);
+  BOOST_REQUIRE_NO_THROW(qo->getMetadata("my_meta"));
+  BOOST_CHECK_EQUAL(qo->getMetadata("my_meta"), "is_good");
+
+  qo = f.backend->retrieveQO(RepoPathUtils::getQoPath("TST", f.taskName + "/metadata", "", {}, "", false), repository::CcdbDatabase::Timestamp::Current, {}, { { "my_meta", "nonexistent" } });
+  BOOST_REQUIRE_EQUAL(qo, nullptr);
 }
 
 BOOST_AUTO_TEST_CASE(ccdb_provenance, *utf::depends_on("ccdb_store"))
@@ -415,31 +457,6 @@ BOOST_AUTO_TEST_CASE(ccdb_store_retrieve_latest)
   auto h1Back = dynamic_cast<TH1F*>(moBack->getObject());
   BOOST_REQUIRE(h1Back != nullptr);
   BOOST_CHECK_EQUAL(h1Back->GetEntries(), 20000);
-}
-
-BOOST_AUTO_TEST_CASE(ccdb_qcfc)
-{
-  test_fixture f;
-  const std::string pid = std::to_string(getpid());
-  const std::string qcfcName = "Test_pid" + pid; // TODO we can use a 'Test' directory once https://github.com/AliceO2Group/AliceO2/pull/8195 is merged
-
-  std::shared_ptr<QualityControlFlagCollection> qcfc1{ new QualityControlFlagCollection{ qcfcName, "TST", { 45, 500000 }, 42, "LHC42x", "spass", "qc" } };
-  qcfc1->insert({ 50, 77, FlagTypeFactory::Invalid(), "a comment", "a source" });
-  qcfc1->insert({ 51, 77, FlagTypeFactory::Invalid() });
-  qcfc1->insert({ 1234, 3434, FlagTypeFactory::BadPID() });
-  qcfc1->insert({ 50, 77, FlagTypeFactory::BadPID() });
-  qcfc1->insert({ 43434, 63421, FlagTypeFactory::Good() });
-
-  f.backend->storeQCFC(qcfc1);
-
-  auto qcfc2 = f.backend->retrieveQCFC(qcfc1->getName(), qcfc1->getDetector(), qcfc1->getRunNumber(),
-                                       qcfc1->getPassName(), qcfc1->getPeriodName(), qcfc1->getProvenance(), 400000);
-  BOOST_REQUIRE(qcfc2 != nullptr);
-
-  BOOST_REQUIRE_EQUAL(qcfc1->size(), qcfc2->size());
-  for (auto it1 = qcfc1->begin(), it2 = qcfc2->begin(); it1 != qcfc1->end() && it2 != qcfc2->end(); ++it1, ++it2) {
-    BOOST_CHECK_EQUAL(*it1, *it2);
-  }
 }
 
 } // namespace

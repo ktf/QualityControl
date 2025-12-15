@@ -40,20 +40,28 @@ ITSClusterTask::ITSClusterTask() : TaskInterface() {}
 
 ITSClusterTask::~ITSClusterTask()
 {
+  delete hTFCounter;
   delete hEmptyLaneFractionGlobal;
   delete hClusterVsBunchCrossing;
+
   for (int iLayer = 0; iLayer < NLayer; iLayer++) {
 
     if (!mEnableLayers[iLayer])
       continue;
 
     if (iLayer < NLayerIB) {
+      delete hClusterCenterMap[iLayer];
       delete hLongClustersPerChip[iLayer];
       delete hMultPerChipWhenLongClusters[iLayer];
+    }
+
+    else {
+      delete hLongClustersPerStave[iLayer - NLayerIB];
     }
     delete hClusterSizeLayerSummary[iLayer];
     delete hClusterTopologyLayerSummary[iLayer];
     delete hGroupedClusterSizeLayerSummary[iLayer];
+    delete hClusterOccupancyDistribution[iLayer];
 
     if (mDoPublish1DSummary == 1) {
       if (iLayer < NLayerIB) {
@@ -62,6 +70,7 @@ ITSClusterTask::~ITSClusterTask()
 
             delete hClusterTopologySummaryIB[iLayer][iStave][iChip];
             delete hGroupedClusterSizeSummaryIB[iLayer][iStave][iChip];
+            delete hClusterSizeSummaryIB[iLayer][iStave][iChip];
           }
         }
       } else {
@@ -84,7 +93,7 @@ void ITSClusterTask::initialize(o2::framework::InitContext& /*ctx*/)
 
   getJsonParameters();
 
-  // create binning for fine checks
+  // Create binning for fine checks
   setRphiBinningIB();
   setZBinningIB();
   setRphiBinningOB();
@@ -120,7 +129,7 @@ void ITSClusterTask::monitorData(o2::framework::ProcessingContext& ctx)
 {
 
   if (mTimestamp == -1) { // get dict from ccdb
-    mTimestamp = std::stol(o2::quality_control_modules::common::getFromConfig<string>(mCustomParameters, "dicttimestamp", "0"));
+    mTimestamp = std::stol(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "dicttimestamp", "0"));
     long int ts = mTimestamp ? mTimestamp : ctx.services().get<o2::framework::TimingInfo>().creation;
     ILOG(Debug, Devel) << "Getting dictionary from ccdb - timestamp: " << ts << ENDM;
     std::map<std::string, std::string> metadata;
@@ -154,9 +163,12 @@ void ITSClusterTask::monitorData(o2::framework::ProcessingContext& ctx)
 
     const auto& ROF = clusRofArr[iROF];
     const auto bcdata = ROF.getBCData();
-    int nClustersForBunchCrossing = 0;
-    int nLongClusters[ChipBoundary[NLayerIB]] = {};
+    int nDigits3pixLay[7] = { 0 };
+    int nClusters3pixLay[7] = { 0 };
+    int nClusters3pix = 0;
+    int nLongClusters[ChipBoundary[NLayerIB]] = {};     // for IB
     int nHitsFromClusters[ChipBoundary[NLayerIB]] = {}; // only IB is implemented at the moment
+    int nLongClustersStave[4][mNStaves[6]] = { {} };    // for OB. nLongClustersStave[n][m] means stave L<3+n>_<m>
 
     for (int icl = ROF.getFirstEntry(); icl < ROF.getFirstEntry() + ROF.getNEntries(); icl++) {
 
@@ -213,28 +225,39 @@ void ITSClusterTask::monitorData(o2::framework::ProcessingContext& ctx)
       }
 
       if (npix > 2) {
-        nClustersForBunchCrossing++;
+        nClusters3pixLay[lay]++;
+        nClusters3pix++;
+        nDigits3pixLay[lay] += npix;
       }
 
       if (lay < NLayerIB) {
         nHitsFromClusters[ChipID] += npix;
       }
 
-      if (lay < NLayerIB && colspan >= minColSpanLongCluster && rowspan <= maxRowSpanLongCluster) {
+      if (colspan >= minColSpanLongCluster && rowspan <= maxRowSpanLongCluster) {
         // definition of long cluster
-        nLongClusters[ChipID]++;
+        if (lay < NLayerIB) {
+          nLongClusters[ChipID]++;
+        } else {
+          nLongClustersStave[lay - NLayerIB][sta]++;
+        }
       }
 
       if (lay < NLayerIB) {
         hAverageClusterOccupancySummaryIB[lay]->getNum()->Fill(chip, sta);
         hAverageClusterSizeSummaryIB[lay]->getNum()->Fill(chip, sta, (double)npix);
         hAverageClusterSizeSummaryIB[lay]->getDen()->Fill(chip, sta, 1.);
+        hClusterCenterMap[lay]->Fill(cluster.getCol(), cluster.getRow());
         if (mDoPublish1DSummary == 1) {
           hClusterTopologySummaryIB[lay][sta][chip]->Fill(ClusterID);
         }
 
         hClusterSizeLayerSummary[lay]->Fill(npix);
         hClusterTopologyLayerSummary[lay]->Fill(ClusterID);
+
+        if (mDoPublish1DSummary) {
+          hClusterSizeSummaryIB[lay][sta][chip]->Fill(npix);
+        }
 
         if (isGrouped) {
           if (mDoPublish1DSummary == 1) {
@@ -273,9 +296,15 @@ void ITSClusterTask::monitorData(o2::framework::ProcessingContext& ctx)
         hAverageClusterSizeSummaryFine[lay]->getNum()->Fill(getHorizontalBin(locC.Z(), chip, lay, lane), getVerticalBin(locC.X(), sta, lay), (float)npix);
       }
     }
-    hClusterVsBunchCrossing->Fill(bcdata.bc, nClustersForBunchCrossing); // we count only the number of clusters, not their sizes
+    hClusterVsBunchCrossing->Fill(bcdata.bc, nClusters3pix); // we count only the number of clusters, not their sizes
+    for (int lay = 0; lay < 7; lay++) {
+      if (nClusters3pixLay[lay] > 0) {
+        int nchips = mNStaves[lay] * mNHicPerStave[lay] * mNChipsPerHic[lay];
+        hClusterOccupancyDistribution[lay]->Fill(1. * nClusters3pixLay[lay] / nchips, 1. * nDigits3pixLay[lay] / nchips);
+      }
+    }
 
-    // filling these anomaly plots once per ROF, ignoring chips w/o long clusters
+    // filling these anomaly plots once per ROF, ignoring chips w/o long clusters -- IB
     for (int ichip = 0; ichip < ChipBoundary[NLayerIB]; ichip++) {
 
       int nLong = TMath::Min(nLongClusters[ichip], 40);
@@ -288,6 +317,17 @@ void ITSClusterTask::monitorData(o2::framework::ProcessingContext& ctx)
       }
       hLongClustersPerChip[ilayer]->Fill(ichip, nLong);
       hMultPerChipWhenLongClusters[ilayer]->Fill(ichip, nHitsFromClusters[ichip]);
+    }
+    // filling anomaly plots once per ROF, ignoring staves w/o long clusters -- OB
+    for (int ilay = 3; ilay < 7; ilay++) {
+      for (int ist = 0; ist < mNStaves[ilay]; ist++) {
+
+        int nLong = TMath::Min(nLongClustersStave[ilay - NLayerIB][ist], 40);
+        if (nLong < 1) {
+          continue;
+        }
+        hLongClustersPerStave[ilay - NLayerIB]->Fill(ist, nLong);
+      }
     }
   }
 
@@ -358,6 +398,8 @@ void ITSClusterTask::monitorData(o2::framework::ProcessingContext& ctx)
     }
   }
 
+  hTFCounter->Fill(0);
+
   end = std::chrono::high_resolution_clock::now();
   difference = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   ILOG(Debug, Devel) << "Time in QC Cluster Task:  " << difference << ENDM;
@@ -392,6 +434,7 @@ void ITSClusterTask::endOfActivity(const Activity& /*activity*/)
 void ITSClusterTask::reset()
 {
   ILOG(Debug, Devel) << "Resetting the histograms" << ENDM;
+  hTFCounter->Reset();
   hClusterVsBunchCrossing->Reset();
   hEmptyLaneFractionGlobal->Reset("ICES");
   mGeneralOccupancy->Reset();
@@ -399,11 +442,13 @@ void ITSClusterTask::reset()
     if (!mEnableLayers[iLayer])
       continue;
 
+    hClusterOccupancyDistribution[iLayer]->Reset();
     hClusterSizeLayerSummary[iLayer]->Reset();
     hGroupedClusterSizeLayerSummary[iLayer]->Reset();
     hClusterTopologyLayerSummary[iLayer]->Reset();
 
     if (iLayer < NLayerIB) {
+      hClusterCenterMap[iLayer]->Reset();
       hLongClustersPerChip[iLayer]->Reset();
       hMultPerChipWhenLongClusters[iLayer]->Reset();
       hAverageClusterOccupancySummaryIB[iLayer]->Reset();
@@ -413,10 +458,12 @@ void ITSClusterTask::reset()
           for (int iChip = 0; iChip < mNChipsPerHic[iLayer]; iChip++) {
             hClusterTopologySummaryIB[iLayer][iStave][iChip]->Reset();
             hGroupedClusterSizeSummaryIB[iLayer][iStave][iChip]->Reset();
+            hClusterSizeSummaryIB[iLayer][iStave][iChip]->Reset();
           }
         }
       }
     } else {
+      hLongClustersPerStave[iLayer - NLayerIB]->Reset();
       hAverageClusterOccupancySummaryOB[iLayer]->Reset();
       hAverageClusterSizeSummaryOB[iLayer]->Reset();
       if (mDoPublish1DSummary == 1) {
@@ -438,7 +485,12 @@ void ITSClusterTask::reset()
 
 void ITSClusterTask::createAllHistos()
 {
-  hClusterVsBunchCrossing = new TH2D("BunchCrossingIDvsClusters", "BunchCrossingIDvsClusters", nBCbins, 0, 4095, 100, 0, 2000);
+  hTFCounter = new TH1D("TFcounter", "TFcounter", 1, 0, 1);
+  hTFCounter->SetTitle("TF counter");
+  addObject(hTFCounter);
+  formatAxes(hTFCounter, "", "TF", 1, 1.10);
+
+  hClusterVsBunchCrossing = new TH2D("BunchCrossingIDvsClusters", "BunchCrossingIDvsClusters", nBCbins, 0, 4095, 150, 0, 3000);
   hClusterVsBunchCrossing->SetTitle("#clusters vs BC id for clusters with npix > 2");
   addObject(hClusterVsBunchCrossing);
   formatAxes(hClusterVsBunchCrossing, "Bunch Crossing ID", "Number of clusters with npix > 2 in ROF", 1, 1.10);
@@ -462,6 +514,11 @@ void ITSClusterTask::createAllHistos()
       continue;
 
     if (iLayer < NLayerIB) {
+      hClusterCenterMap[iLayer] = new TH2D(Form("ClusterCenterMapL%d", iLayer), Form("Stacked map of cluster centers for all L%d chips;Column;Row", iLayer), 1024, -0.5, 1023.5, 512, -0.5, 511.5);
+      addObject(hClusterCenterMap[iLayer]);
+      formatAxes(hClusterCenterMap[iLayer], "Column", "Row", 1, 1.10);
+      hClusterCenterMap[iLayer]->SetStats(0);
+
       hLongClustersPerChip[iLayer] = new TH2D(Form("Anomalies/Layer%d/LongClusters", iLayer), Form("Layer%d/LongClusters", iLayer), ChipBoundary[iLayer + 1] - ChipBoundary[iLayer], ChipBoundary[iLayer], ChipBoundary[iLayer + 1], 41, 0, 41);
       hMultPerChipWhenLongClusters[iLayer] = new TH2D(Form("Anomalies/Layer%d/HitsWhenLongClusters", iLayer), Form("Layer%d/HitsWhenLongClusters", iLayer), ChipBoundary[iLayer + 1] - ChipBoundary[iLayer], ChipBoundary[iLayer], ChipBoundary[iLayer + 1], 250, 0, 40000);
       addObject(hLongClustersPerChip[iLayer]);
@@ -472,19 +529,38 @@ void ITSClusterTask::createAllHistos()
       hMultPerChipWhenLongClusters[iLayer]->SetStats(0);
     }
 
-    hClusterSizeLayerSummary[iLayer] = new TH1D(Form("Layer%d/AverageClusterSizeSummary", iLayer), Form("Layer%dAverageClusterSizeSummary", iLayer), 100, 0, 100);
+    else {
+
+      hLongClustersPerStave[iLayer - NLayerIB] = new TH2D(Form("Anomalies/Layer%d/LongClusters", iLayer), Form("Layer%d/LongClusters", iLayer), mNStaves[iLayer], 0, mNStaves[iLayer], 41, 0, 41);
+      addObject(hLongClustersPerStave[iLayer - NLayerIB]);
+      formatAxes(hLongClustersPerStave[iLayer - NLayerIB], "Stave", "number of long clusters", 1, 1.10);
+      hLongClustersPerStave[iLayer - NLayerIB]->SetStats(0);
+    }
+
+    hClusterSizeLayerSummary[iLayer] = new TH1L(Form("Layer%d/AverageClusterSizeSummary", iLayer), Form("Layer%dAverageClusterSizeSummary", iLayer), 128 * 128, 0, 128 * 128);
     hClusterSizeLayerSummary[iLayer]->SetTitle(Form("Cluster size summary for Layer %d", iLayer));
     addObject(hClusterSizeLayerSummary[iLayer]);
     formatAxes(hClusterSizeLayerSummary[iLayer], "Cluster Size (pixels)", "counts", 1, 1.10);
     hClusterSizeLayerSummary[iLayer]->SetStats(0);
 
-    hGroupedClusterSizeLayerSummary[iLayer] = new TH1D(Form("Layer%d/AverageGroupedClusterSizeSummary", iLayer), Form("Layer%dAverageGroupedClusterSizeSummary", iLayer), 100, 0, 100);
+    double dynbin[7][4] = { { 300, 100, 500, 1000 }, { 300, 100, 500, 1000 }, { 300, 100, 500, 1000 }, // IB
+                            { 300, 5, 500, 50 },
+                            { 300, 5, 500, 50 }, // ML
+                            { 300, 1.5, 500, 15 },
+                            { 300, 1.5, 500, 15 } }; // OL
+    hClusterOccupancyDistribution[iLayer] = new TH2D(Form("Layer%d/OccupancyPerChipPerEvt", iLayer), Form("Layer%d/OccupancyPerChipPerEvt", iLayer), (int)dynbin[iLayer][0], 0, dynbin[iLayer][1], (int)dynbin[iLayer][2], 0, dynbin[iLayer][3]);
+    hClusterOccupancyDistribution[iLayer]->SetTitle(Form("hits/chip/evt, form clusters with npix>2 - Layer%d", iLayer));
+    addObject(hClusterOccupancyDistribution[iLayer]);
+    formatAxes(hClusterOccupancyDistribution[iLayer], "N clus", "N hit", 1, 1.10);
+    hClusterOccupancyDistribution[iLayer]->SetStats(0);
+
+    hGroupedClusterSizeLayerSummary[iLayer] = new TH1L(Form("Layer%d/AverageGroupedClusterSizeSummary", iLayer), Form("Layer%dAverageGroupedClusterSizeSummary", iLayer), 128 * 128, 0, 128 * 128);
     hGroupedClusterSizeLayerSummary[iLayer]->SetTitle(Form("Cluster size summary for Layer %d", iLayer));
     addObject(hGroupedClusterSizeLayerSummary[iLayer]);
     formatAxes(hGroupedClusterSizeLayerSummary[iLayer], "Grouped Cluster Size (pixels)", "counts", 1, 1.10);
     hGroupedClusterSizeLayerSummary[iLayer]->SetStats(0);
 
-    hClusterTopologyLayerSummary[iLayer] = new TH1D(Form("Layer%d/ClusterTopologySummary", iLayer), Form("Layer%dClusterTopologySummary", iLayer), 300, 0, 300);
+    hClusterTopologyLayerSummary[iLayer] = new TH1L(Form("Layer%d/ClusterTopologySummary", iLayer), Form("Layer%dClusterTopologySummary", iLayer), 300, 0, 300);
     hClusterTopologyLayerSummary[iLayer]->SetTitle(Form("Cluster topology summary for Layer %d", iLayer));
     addObject(hClusterTopologyLayerSummary[iLayer]);
     formatAxes(hClusterTopologyLayerSummary[iLayer], "Cluster Topology (ID)", "counts", 1, 1.10);
@@ -545,6 +621,11 @@ void ITSClusterTask::createAllHistos()
             hGroupedClusterSizeSummaryIB[iLayer][iStave][iChip]->SetTitle(Form("Cluster Size for grouped topologies on Layer %d Stave %d Chip %d", iLayer, iStave, iChip));
             addObject(hGroupedClusterSizeSummaryIB[iLayer][iStave][iChip]);
             formatAxes(hGroupedClusterSizeSummaryIB[iLayer][iStave][iChip], "Cluster size (Pixel)", "Counts", 1, 1.10);
+
+            hClusterSizeSummaryIB[iLayer][iStave][iChip] = new TH1D(Form("Layer%d/Stave%d/CHIP%d/ClusterSize", iLayer, iStave, iChip), Form("Layer%dStave%dCHIP%dClusterSize", iLayer, iStave, iChip), 100, 0, 100);
+            hClusterSizeSummaryIB[iLayer][iStave][iChip]->SetTitle(Form("Cluster Size for Layer %d Stave %d Chip %d", iLayer, iStave, iChip));
+            addObject(hClusterSizeSummaryIB[iLayer][iStave][iChip]);
+            formatAxes(hClusterSizeSummaryIB[iLayer][iStave][iChip], "Cluster size (Pixel)", "Counts", 1, 1.10);
 
             hClusterTopologySummaryIB[iLayer][iStave][iChip] = new TH1D(Form("Layer%d/Stave%d/CHIP%d/ClusterTopology", iLayer, iStave, iChip), Form("Layer%dStave%dCHIP%dClusterTopology", iLayer, iStave, iChip), 300, 0, 300);
             hClusterTopologySummaryIB[iLayer][iStave][iChip]->SetTitle(Form("Cluster Topology on Layer %d Stave %d Chip %d", iLayer, iStave, iChip));

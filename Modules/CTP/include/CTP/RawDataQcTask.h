@@ -56,6 +56,7 @@ class CTPRawDataReaderTask final : public TaskInterface
   std::unique_ptr<TH1DRatio> mHistoClassRatios = nullptr; // histogram with ctp class ratios to MB
   std::unique_ptr<TH1D> mHistoBCMinBias1 = nullptr;       // histogram of BC positions to check LHC filling scheme
   std::unique_ptr<TH1D> mHistoBCMinBias2 = nullptr;       // histogram of BC positions to check LHC filling scheme
+  std::unique_ptr<TH1D> mHistoDecodeError = nullptr;      // histogram of erros from decoder
   int mRunNumber;
   int indexMB1 = -1;
   int indexMB2 = -1;
@@ -68,6 +69,12 @@ class CTPRawDataReaderTask final : public TaskInterface
   long int mTimestamp;
   std::string classNames[nclasses];
   int mIndexMBclass = -1; // index for the MB ctp class, which is used as scaling for the ratios
+  bool mConsistCheck = 0;
+  bool mReadCTPconfigInMonitorData = 0;
+  const o2::ctp::CTPConfiguration* mCTPconfig = nullptr;
+  std::string mMBclassName;
+  std::array<uint64_t, o2::ctp::CTP_NCLASSES> mClassErrorsA;
+  bool mPerformConsistencyCheck = false;
 };
 
 } // namespace o2::quality_control_modules::ctp

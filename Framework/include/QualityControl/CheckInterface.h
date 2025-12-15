@@ -22,11 +22,14 @@
 #include "QualityControl/UserCodeInterface.h"
 #include "QualityControl/Activity.h"
 
+#include "QualityControl/QCInputs.h"
+
 namespace o2::quality_control::core
 {
 class Activity;
 class MonitorObject;
-}
+
+} // namespace o2::quality_control::core
 
 using namespace o2::quality_control::core;
 
@@ -45,10 +48,18 @@ class CheckInterface : public core::UserCodeInterface
   virtual ~CheckInterface() = default;
 
   /// \brief Returns the quality associated with these objects.
+  /// \deprecated This function won't be deleted in future releases for compatibility reasons but users should
+  ///             use check(const Data&) for any new Checks.
   ///
   /// @param moMap A map of the the MonitorObjects to check and their full names (i.e. <task_name>/<mo name>) as keys.
   /// @return The quality associated with these objects.
-  virtual core::Quality check(std::map<std::string, std::shared_ptr<core::MonitorObject>>* moMap) = 0;
+  virtual core::Quality check(std::map<std::string, std::shared_ptr<core::MonitorObject>>* moMap);
+
+  /// \brief Returns the quality associated with these objects.
+  ///
+  /// @param data An object with any type of data possible accesible via full names (i.e. <task_name>/<mo name> in case of MOs) as keys.
+  /// @return The quality associated with these objects.
+  virtual core::Quality check(const core::QCInputs& data);
 
   /// \brief Modify the aspect of the plot.
   ///
@@ -69,24 +80,8 @@ class CheckInterface : public core::UserCodeInterface
   /// then this should be reset here.
   virtual void reset(); // not fully abstract because we don't want to change all the existing subclasses
 
-  /// \brief Returns the name of the class that can be treated by this check.
-  ///
-  /// The name of the class returned by this method will be checked against the MonitorObject's encapsulated
-  /// object's class. If it is the same or a parent then the check will be applied. Therefore, this method
-  /// must return the highest class in the hierarchy that this check can use.
-  /// If the class does not override it, we return "TObject".
-  virtual std::string getAcceptedType();
-
-  bool isObjectCheckable(const std::shared_ptr<core::MonitorObject> mo);
-  bool isObjectCheckable(const core::MonitorObject* mo);
-
   virtual void startOfActivity(const core::Activity& activity); // not fully abstract because we don't want to change all the existing subclasses
   virtual void endOfActivity(const core::Activity& activity);   // not fully abstract because we don't want to change all the existing subclasses
-
-  void setDatabase(std::shared_ptr<o2::quality_control::repository::DatabaseInterface> database)
-  {
-    mDatabase = database;
-  }
 
  protected:
   /// \brief Called each time mCustomParameters is updated.
@@ -99,9 +94,6 @@ class CheckInterface : public core::UserCodeInterface
   /// \param referenceActivity Reference activity (usually a copy of the current activity with a different run number)
   /// \return
   std::shared_ptr<MonitorObject> retrieveReference(std::string path, Activity referenceActivity);
-
- private:
-  std::shared_ptr<o2::quality_control::repository::DatabaseInterface> mDatabase;
 
   ClassDef(CheckInterface, 6)
 };

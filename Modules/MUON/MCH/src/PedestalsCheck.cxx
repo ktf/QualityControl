@@ -223,8 +223,6 @@ Quality PedestalsCheck::check(std::map<std::string, std::shared_ptr<MonitorObjec
   return result;
 }
 
-std::string PedestalsCheck::getAcceptedType() { return "TH1"; }
-
 static void updateTitle(TH1* hist, std::string suffix)
 {
   if (!hist) {
@@ -291,6 +289,7 @@ void PedestalsCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkRe
     h->SetMaximum(1.1);
 
     addChamberDelimiters(h, 0, 1.1);
+    addChamberLabelsForDE(h);
 
     TLine* delimiter = new TLine(h->GetXaxis()->GetXmin(), mMaxEmptyFractionPerDE, h->GetXaxis()->GetXmax(), mMaxEmptyFractionPerDE);
     delimiter->SetLineColor(kBlack);
@@ -314,6 +313,7 @@ void PedestalsCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkRe
     h->SetMaximum(1.1);
 
     addChamberDelimiters(h, 0, 1.1);
+    addChamberLabelsForDE(h);
 
     TLine* delimiter = new TLine(h->GetXaxis()->GetXmin(), mMaxBadFractionPerDE, h->GetXaxis()->GetXmax(), mMaxBadFractionPerDE);
     delimiter->SetLineColor(kBlack);
@@ -343,6 +343,7 @@ void PedestalsCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkRe
     h->SetMaximum(max);
 
     addChamberDelimiters(h, min, max);
+    addChamberLabelsForDE(h);
 
     TLine* delimiter = new TLine(h->GetXaxis()->GetXmin(), mMinStatisticsPerDE, h->GetXaxis()->GetXmax(), mMinStatisticsPerDE);
     delimiter->SetLineColor(kBlack);
@@ -369,6 +370,7 @@ void PedestalsCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkRe
     h->SetMaximum(max);
 
     addChamberDelimiters(h, min, max);
+    addChamberLabelsForDE(h);
   }
 
   if (mo->getName().find("Pedestals_Elec") != std::string::npos) {

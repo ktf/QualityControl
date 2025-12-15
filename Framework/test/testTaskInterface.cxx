@@ -132,7 +132,7 @@ TEST_CASE("test_invoke_all_TaskRunnerConfig_methods")
 {
   // This is maximum that we can do until we are able to test the DPL algorithms in isolation.
   TaskRunnerConfig taskConfig;
-  auto* objectsManager = new ObjectsManager(taskConfig.taskName, taskConfig.className, taskConfig.detectorName, taskConfig.consulUrl, 0, true);
+  auto* objectsManager = new ObjectsManager(taskConfig.taskName, taskConfig.className, taskConfig.detectorName, 0);
 
   test::TestTask testTask(objectsManager);
   CHECK(testTask.test == 0);
@@ -167,17 +167,22 @@ TEST_CASE("test_invoke_all_TaskRunnerConfig_methods")
 TEST_CASE("test_task_factory")
 {
   TaskRunnerConfig config{
-    "SkeletonTaskRunner",
-    "skeletonTask",
     "QcSkeleton",
     "o2::quality_control_modules::skeleton::SkeletonTask",
+    "TST",
+    "",
+    {},
+    "something",
+    {},
+    "SkeletonTaskRunner",
+    "skeletonTask",
     { { 10, 1 } },
     -1,
     true,
     ""
   };
 
-  auto objectsManager = make_shared<ObjectsManager>(config.taskName, config.className, config.detectorName, config.consulUrl);
+  auto objectsManager = make_shared<ObjectsManager>(config.taskName, config.className, config.detectorName, 0);
 
   TaskFactory taskFactory;
   auto task = taskFactory.create(config, objectsManager);
@@ -200,7 +205,7 @@ TEST_CASE("retrieveCondition")
 
   // retrieve it
   TaskRunnerConfig taskConfig;
-  auto* objectsManager = new ObjectsManager(taskConfig.taskName, taskConfig.className, taskConfig.detectorName, taskConfig.consulUrl, 0, true);
+  auto* objectsManager = new ObjectsManager(taskConfig.taskName, taskConfig.className, taskConfig.detectorName, 0);
   test::TestTask testTask(objectsManager);
   testTask.setCcdbUrl("ccdb-test.cern.ch:8080");
   o2::emcal::BadChannelMap* bcm = testTask.testRetrieveCondition();

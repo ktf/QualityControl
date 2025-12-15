@@ -162,28 +162,30 @@ TaskRunnerConfig TaskRunnerFactory::extractConfig(const CommonSpec& globalConfig
     { globalConfig.activityStart, globalConfig.activityEnd },
     globalConfig.activityBeamType,
     globalConfig.activityPartitionName,
-    globalConfig.activityFillNumber
+    globalConfig.activityFillNumber,
+    globalConfig.activityOriginalNumber
   };
 
   o2::globaltracking::RecoContainer rd;
 
   return {
-    deviceName,
-    taskSpec.taskName,
     taskSpec.moduleName,
     taskSpec.className,
+    InfrastructureSpecReader::validateDetectorName(taskSpec.detectorName),
+    globalConfig.consulUrl,
+    taskSpec.customParameters,
+    globalConfig.conditionDBUrl,
+    globalConfig.database,
+    deviceName,
+    taskSpec.taskName,
     multipleCycleDurations,
     taskSpec.maxNumberCycles,
     taskSpec.critical,
-    globalConfig.consulUrl,
-    globalConfig.conditionDBUrl,
     globalConfig.monitoringUrl,
     globalConfig.bookkeepingUrl,
     inputs,
     monitorObjectsSpec,
     options,
-    taskSpec.customParameters,
-    InfrastructureSpecReader::validateDetectorName(taskSpec.detectorName),
     parallelTaskID,
     taskSpec.saveObjectsToFile,
     resetAfterCycles.value_or(taskSpec.resetAfterCycles),
@@ -192,7 +194,7 @@ TaskRunnerConfig TaskRunnerFactory::extractConfig(const CommonSpec& globalConfig
     grpGeomRequest,
     globalTrackingDataRequest,
     taskSpec.movingWindows,
-    taskSpec.disableLastCycle
+    taskSpec.disableLastCycle,
   };
 }
 

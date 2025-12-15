@@ -18,8 +18,12 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include "getTestDataDirectory.h"
+#include "QualityControl/InfrastructureGenerator.h"
+
 #include <iostream>
 #include <catch_amalgamated.hpp>
+#include <Configuration/ConfigurationFactory.h>
+#include <DataSampling/DataSampling.h>
 
 using namespace o2::quality_control::core;
 using namespace std;
@@ -138,23 +142,23 @@ TEST_CASE("test_at_optional")
 TEST_CASE("test_at_optional_activity")
 {
   Activity activity;
-  activity.mBeamType = "PROTON-PROTON";
+  activity.mBeamType = "pp";
   activity.mType = "PHYSICS";
 
   CustomParameters cp;
   cp.set("aaa", "AAA");
   cp.set("bbb", "BBB");
   cp.set("aaa", "asdf", "PHYSICS");
-  cp.set("aaa", "CCC", "PHYSICS", "PROTON-PROTON");
-  cp.set("aaa", "DDD", "PHYSICS", "Pb-Pb");
-  cp.set("aaa", "AAA", "TECHNICAL", "PROTON-PROTON");
+  cp.set("aaa", "CCC", "PHYSICS", "pp");
+  cp.set("aaa", "DDD", "PHYSICS", "PbPb");
+  cp.set("aaa", "AAA", "TECHNICAL", "pp");
 
   CHECK(cp.atOptional("aaa", activity).value() == "CCC");
   CHECK(cp.atOptional("abc", activity).has_value() == false);
   CHECK(cp.atOptional("abc", activity).value_or("bla") == "bla");
 
   Activity activity2;
-  activity.mBeamType = "Pb-Pb";
+  activity.mBeamType = "PbPb";
   activity.mType = "PHYSICS";
   CHECK(cp.atOptional("aaa", activity).value() == "DDD");
 }
@@ -201,6 +205,35 @@ TEST_CASE("test_load_from_ptree")
   CHECK(cp.at("myOwnKey") == "myOwnValue");
   CHECK(cp.at("myOwnKey1", "PHYSICS") == "myOwnValue1b");
   CHECK(cp.atOptional("asdf").has_value() == false);
+
+  auto value = cp.getOptionalPtree("myOwnKey3");
+  CHECK(value.has_value() == true);
+
+  // Check that it's an array with 1 element
+  std::size_t arraySize = std::distance(value->begin(), value->end());
+  CHECK(arraySize == 1);
+
+  // Get the first (and only) element of the array
+  auto firstElement = value->begin()->second;
+
+  // Check the top-level properties
+  CHECK(firstElement.get<string>("name") == "mean_of_histogram");
+  CHECK(firstElement.get<string>("title") == "Mean trend of the example histogram");
+  CHECK(firstElement.get<string>("graphAxisLabel") == "Mean X:time");
+  CHECK(firstElement.get<string>("graphYRange") == "0:10000");
+
+  // Check the graphs array
+  auto graphs = firstElement.get_child("graphs");
+  std::size_t graphsSize = std::distance(graphs.begin(), graphs.end());
+  CHECK(graphsSize == 1);
+
+  // Check the first graph properties
+  auto firstGraph = graphs.begin()->second;
+  CHECK(firstGraph.get<string>("name") == "mean_trend");
+  CHECK(firstGraph.get<string>("title") == "mean trend");
+  CHECK(firstGraph.get<string>("varexp") == "example.mean:time");
+  CHECK(firstGraph.get<string>("selection") == "");
+  CHECK(firstGraph.get<string>("option") == "*L PLC PMC");
 }
 
 TEST_CASE("test_default_if_not_found_at_optional")
@@ -214,21 +247,21 @@ TEST_CASE("test_default_if_not_found_at_optional")
   // prepare the CP
   cp.set("key", "valueDefaultDefault", "default", "default");
   cp.set("key", "valuePhysicsDefault", "PHYSICS", "default");
-  cp.set("key", "valuePhysicsPbPb", "PHYSICS", "Pb-Pb");
+  cp.set("key", "valuePhysicsPbPb", "PHYSICS", "PbPb");
   cp.set("key", "valueCosmicsDefault", "COSMICS", "default");
-  cp.set("key", "valueCosmicsDefault", "default", "PROTON-PROTON");
+  cp.set("key", "valueCosmicsDefault", "default", "pp");
 
   // check the data
   CHECK(cp.atOptional("key").value() == "valueDefaultDefault");
   CHECK(cp.atOptional("key", "PHYSICS").value() == "valuePhysicsDefault");
-  CHECK(cp.atOptional("key", "PHYSICS", "Pb-Pb").value() == "valuePhysicsPbPb");
+  CHECK(cp.atOptional("key", "PHYSICS", "PbPb").value() == "valuePhysicsPbPb");
   CHECK(cp.atOptional("key", "COSMICS", "default").value() == "valueCosmicsDefault");
-  CHECK(cp.atOptional("key", "default", "PROTON-PROTON").value() == "valueCosmicsDefault");
+  CHECK(cp.atOptional("key", "default", "pp").value() == "valueCosmicsDefault");
 
   // check when something is missing
-  CHECK(cp.atOptional("key", "PHYSICS", "PROTON-PROTON").value() == "valuePhysicsDefault");   // key is not defined for pp
-  CHECK(cp.atOptional("key", "TECHNICAL", "STRANGE").value() == "valueDefaultDefault");       // key is not defined for run nor beam
-  CHECK(cp.atOptional("key", "TECHNICAL", "PROTON-PROTON").value() == "valueCosmicsDefault"); // key is not defined for technical
+  CHECK(cp.atOptional("key", "PHYSICS", "pp").value() == "valuePhysicsDefault");        // key is not defined for pp
+  CHECK(cp.atOptional("key", "TECHNICAL", "STRANGE").value() == "valueDefaultDefault"); // key is not defined for run nor beam
+  CHECK(cp.atOptional("key", "TECHNICAL", "pp").value() == "valueCosmicsDefault");      // key is not defined for technical
 }
 
 TEST_CASE("test_default_if_not_found_at")
@@ -242,21 +275,21 @@ TEST_CASE("test_default_if_not_found_at")
   // prepare the CP
   cp.set("key", "valueDefaultDefault", "default", "default");
   cp.set("key", "valuePhysicsDefault", "PHYSICS", "default");
-  cp.set("key", "valuePhysicsPbPb", "PHYSICS", "Pb-Pb");
+  cp.set("key", "valuePhysicsPbPb", "PHYSICS", "PbPb");
   cp.set("key", "valueCosmicsDefault", "COSMICS", "default");
-  cp.set("key", "valueCosmicsDefault", "default", "PROTON-PROTON");
+  cp.set("key", "valueCosmicsDefault", "default", "pp");
 
   // check the data
   CHECK(cp.at("key") == "valueDefaultDefault");
   CHECK(cp.at("key", "PHYSICS") == "valuePhysicsDefault");
-  CHECK(cp.at("key", "PHYSICS", "Pb-Pb") == "valuePhysicsPbPb");
+  CHECK(cp.at("key", "PHYSICS", "PbPb") == "valuePhysicsPbPb");
   CHECK(cp.at("key", "COSMICS", "default") == "valueCosmicsDefault");
-  CHECK(cp.at("key", "default", "PROTON-PROTON") == "valueCosmicsDefault");
+  CHECK(cp.at("key", "default", "pp") == "valueCosmicsDefault");
 
   // check when something is missing
-  CHECK(cp.at("key", "PHYSICS", "PROTON-PROTON") == "valuePhysicsDefault");   // key is not defined for pp
-  CHECK(cp.at("key", "TECHNICAL", "STRANGE") == "valueDefaultDefault");       // key is not defined for run nor beam
-  CHECK(cp.at("key", "TECHNICAL", "PROTON-PROTON") == "valueCosmicsDefault"); // key is not defined for technical
+  CHECK(cp.at("key", "PHYSICS", "pp") == "valuePhysicsDefault");        // key is not defined for pp
+  CHECK(cp.at("key", "TECHNICAL", "STRANGE") == "valueDefaultDefault"); // key is not defined for run nor beam
+  CHECK(cp.at("key", "TECHNICAL", "pp") == "valueCosmicsDefault");      // key is not defined for technical
 }
 
 TEST_CASE("test_getAllDefaults")
@@ -264,4 +297,78 @@ TEST_CASE("test_getAllDefaults")
   CustomParameters cp;
   auto result = cp.getAllDefaults();
   CHECK(result.size() == 0);
+}
+
+TEST_CASE("test_getOptionalPtree")
+{
+  CustomParameters cp;
+  std::string content = R""""(
+[
+          {
+            "name": "mean_of_histogram",
+            "title": "Mean trend of the example histogram",
+            "graphAxisLabel": "Mean X:time",
+            "graphYRange": "0:10000",
+            "graphs" : [
+              {
+                "name": "mean_trend",
+                "title": "mean trend",
+                "varexp": "example.mean:time",
+                "selection": "",
+                "option": "*L PLC PMC"
+              }, {
+                "name": "mean_trend_1000",
+                "title": "mean trend + 1000",
+                "varexp": "example.mean + 1000:time",
+                "selection": "",
+                "option": "* PMC",
+                "graphErrors": "1:200"
+              }
+            ]
+          },
+          {
+            "name": "histogram_of_means",
+            "title": "Distribution of mean values in the example histogram",
+            "graphs" : [{
+                "varexp": "example.mean",
+                "selection": "",
+                "option": ""
+              }]
+          },
+          {
+            "name": "example_quality",
+            "title": "Trend of the example histogram's quality",
+            "graphs" : [{
+              "varexp": "QcCheck.name:time",
+              "selection": "",
+              "option": "*"
+            }]
+          }
+        ]
+  )"""";
+  cp.set("key", content);
+  auto pt = cp.getOptionalPtree("key");
+  CHECK(pt.has_value());
+
+  std::size_t number_plots = std::distance(pt->begin(), pt->end());
+  CHECK(number_plots == 3);
+
+  auto first_plot = pt->begin()->second;
+  CHECK(first_plot.get<string>("name") == "mean_of_histogram");
+  auto graphs = first_plot.get_child("graphs");
+  CHECK(graphs.size() == 2);
+
+  auto last_plot = std::prev(pt->end())->second;
+  CHECK(last_plot.get<string>("name") == "example_quality");
+
+  // test for failure
+  CustomParameters cp2;
+  cp2.set("key", "blabla");
+  auto pt2 = cp2.getOptionalPtree("key");
+  CHECK(!pt2.has_value());
+
+  // try to get it as text
+  auto text = cp.atOptional("key");
+  CHECK(text.has_value());
+  CHECK(text == content);
 }

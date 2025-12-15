@@ -2,12 +2,11 @@
 *       @Barthelemy @knopers8 @justonedev1
 
 # Detectors
-/Modules/TOF/      @njacazio
-/Modules/PID/      @njacazio
-/Modules/EMCAL/    @mfasDa @jokonig @Barthelemy @knopers8
-/Modules/TPC/      @wiechula
-/Modules/MFT/      @diana0x0f
+/Modules/TOF/      @ercolessi
+/Modules/EMCAL/    @jokonig @Barthelemy @knopers8
+/Modules/TPC/      @wiechula @makor
+/Modules/MFT/      @AlexianL
 /Modules/ITS/      @iravasen @IsakovAD
 /Modules/TRD/      @martenole @bazinski
 /Modules/FOCAL/    @mfasDa @fjonasALICE
-/Modules/FIT/      @andreasmolander @afurs @jotwinow
+/Modules/FIT/      @andreasmolander @afurs @jotwinow @sahilupadhyaya92
