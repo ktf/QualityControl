@@ -92,7 +92,7 @@ void TrendingCalibLHCphase::finalize(Trigger t, framework::ServiceRegistryRef)
 
 void TrendingCalibLHCphase::trendValues(const Trigger& t, repository::DatabaseInterface& ccdb)
 {
-  mTime = t.timestamp / 1000;
+  mTime = t.activity.mValidity.getMax() / 1000;
   mMetaData.runNumber = t.activity.mId;
 
   mPhase = 0.;
@@ -184,8 +184,8 @@ void TrendingCalibLHCphase::generatePlots()
       // After the update, the title has a different size and it is not in the center anymore. We have to fix that.
       if (auto title = dynamic_cast<TPaveText*>(c->GetPrimitive("title"))) {
         title->SetBBoxCenterX(c->GetBBoxCenter().fX);
-        // It will have an effect only after invoking Draw again.
-        title->Draw();
+        c->Modified();
+        c->Update();
       } else {
         ILOG(Error, Devel) << "Could not get the title TPaveText of the plot '" << plot.name << "'." << ENDM;
       }

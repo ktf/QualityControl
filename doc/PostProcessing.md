@@ -146,7 +146,7 @@ Checks can be applied to the results of Post-processing Tasks just as for normal
 
 A postprocessing task can access custom parameters declared in the configuration file at `qc.postprocessing.<task_id>.extendedTaskParameters`. They are stored inside an object of type `CustomParameters` named `mCustomParameters`, which is a protected member of `TaskInterface`.
 
-[More details](Advanced.md#definition-and-access-of-user-specific-configuration) can be found about this feature in the Tasks (same behaviour).
+[More details](Configuration.md#definition-and-access-of-user-defined-configuration-extendedtaskparameters) can be found about this feature in the Tasks (same behaviour).
 
 #### Triggers configuration
 
@@ -604,6 +604,7 @@ The input MonitorObjects to be processed are logically divided in **dataGroups**
 * `legendHeight`: space reserved for the legend above the histograms, in fractions of the pad height; if the height is set to zero, the legend is not shown
 * `drawOption1D`: the ROOT draw option to be used for the 1-D histograms
 * `drawOption2D`: the ROOT draw option to be used for the 2-D histograms
+* `logScale`: boolean parameter specifying wether to draw the value axis in log or linear scale (default is `false`)
 
  The input objects are searched within the `inputPath`, and the output plots are stored inside the `outputPath`.
 It is also possible to optionally specify a different path for the reference objects, via the `referencePath` parameter. If not given, the `referencePath` will coincide with the `inputPath`.
@@ -694,6 +695,7 @@ In the example configuration below, the relationship between the input and outpu
             "legendHeight": "0.2",  
             "drawOption1D": "E",
             "drawOption2D": "COL",
+            "logScale": "false",
             "inputObjects": [
               "TrackEta",
               "TrackEtaPhi"
@@ -1094,7 +1096,7 @@ up a long-running workflow in Nomad.
 ### I want to run trend a moving window in a synchronous QC
 
 In your QC task, enable the moving window feature on the selected plot.
-More details can be found in [Advanced/Moving window](Advanced.md#moving-window).
+More details can be found in [Moving window](Framework.md#moving-window).
 
 Use the NewObject trigger on the moving window to update the task:
 

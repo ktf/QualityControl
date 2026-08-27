@@ -41,7 +41,7 @@
 #include "QualityControl/ConfigParamGlo.h"
 #include "QualityControl/Bookkeeping.h"
 #include "QualityControl/WorkflowType.h"
-#include "QualityControl/HashDataDescription.h"
+#include "QualityControl/DataHeaderHelpers.h"
 
 using namespace AliceO2::Common;
 using namespace AliceO2::InfoLogger;
@@ -94,14 +94,6 @@ void AggregatorRunner::prepareOutputs()
   for (const auto& aggConfig : mAggregatorsConfig) {
     mOutputs.emplace_back(aggConfig.qoSpec);
   }
-}
-
-header::DataDescription AggregatorRunner::createAggregatorRunnerDataDescription(const std::string& aggregatorName)
-{
-  if (aggregatorName.empty()) {
-    BOOST_THROW_EXCEPTION(FatalException() << errinfo_details("Empty taskName for task's data description"));
-  }
-  return quality_control::core::createDataDescription(aggregatorName, AggregatorRunner::descriptionHashLength);
 }
 
 std::string AggregatorRunner::createAggregatorRunnerName()

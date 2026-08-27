@@ -49,7 +49,6 @@
 #include "QualityControl/TimekeeperFactory.h"
 #include "QualityControl/ActivityHelpers.h"
 #include "QualityControl/WorkflowType.h"
-#include "QualityControl/HashDataDescription.h"
 #include "QualityControl/runnerUtils.h"
 
 #include <string>
@@ -85,7 +84,7 @@ TaskRunner::~TaskRunner()
 
 void TaskRunner::init(InitContext& iCtx)
 {
-  core::initInfologger(iCtx, mTaskConfig.infologgerDiscardParameters, "task/" + mTaskConfig.taskName, mTaskConfig.detectorName);
+  core::initInfologger(iCtx, mTaskConfig.infologgerDiscardParameters, "task/" + mTaskConfig.name, mTaskConfig.detectorName);
   ILOG(Info, Devel) << "Initializing TaskRunner" << ENDM;
 
   printTaskConfig();
@@ -103,11 +102,11 @@ void TaskRunner::init(InitContext& iCtx)
   // setup monitoring
   mCollector = MonitoringFactory::Get(mTaskConfig.monitoringUrl);
   mCollector->addGlobalTag(tags::Key::Subsystem, tags::Value::QC);
-  mCollector->addGlobalTag("TaskName", mTaskConfig.taskName);
+  mCollector->addGlobalTag("TaskName", mTaskConfig.name);
   mCollector->addGlobalTag("DetectorName", mTaskConfig.detectorName);
 
   // setup publisher
-  mObjectsManager = std::make_shared<ObjectsManager>(mTaskConfig.taskName, mTaskConfig.className, mTaskConfig.detectorName, mTaskConfig.parallelTaskID);
+  mObjectsManager = std::make_shared<ObjectsManager>(mTaskConfig.name, mTaskConfig.className, mTaskConfig.detectorName, mTaskConfig.parallelTaskID);
   mObjectsManager->setMovingWindowsList(mTaskConfig.movingWindows);
 
   // setup timekeeping
@@ -238,34 +237,6 @@ std::string TaskRunner::createTaskRunnerIdString()
   return { "qc-task" };
 }
 
-header::DataOrigin TaskRunner::createTaskDataOrigin(const std::string& detectorCode, bool movingWindows)
-{
-  // We need a unique Data Origin, so we can have QC Tasks with the same names for different detectors.
-  // However, to avoid colliding with data marked as e.g. TPC/CLUSTERS, we add 'Q' to the data origin, so it is Q<det>.
-  std::string originStr = movingWindows ? "W" : "Q";
-  if (detectorCode.empty()) {
-    ILOG(Warning, Support) << "empty detector code for a task data origin, trying to survive with: DET" << ENDM;
-    originStr += "DET";
-  } else if (detectorCode.size() > 3) {
-    ILOG(Warning, Support) << "too long detector code for a task data origin: " + detectorCode + ", trying to survive with: " + detectorCode.substr(0, 3) << ENDM;
-    originStr += detectorCode.substr(0, 3);
-  } else {
-    originStr += detectorCode;
-  }
-  o2::header::DataOrigin origin;
-  origin.runtimeInit(originStr.c_str());
-  return origin;
-}
-
-header::DataDescription TaskRunner::createTaskDataDescription(const std::string& taskName)
-{
-  if (taskName.empty()) {
-    BOOST_THROW_EXCEPTION(FatalException() << errinfo_details("Empty taskName for task's data description"));
-  }
-
-  return quality_control::core::createDataDescription(taskName, TaskRunner::taskDescriptionHashLength);
-}
-
 header::DataDescription TaskRunner::createTimerDataDescription(const std::string& taskName)
 {
   if (taskName.empty()) {
@@ -374,11 +345,11 @@ bool TaskRunner::isDataReady(const framework::InputRecord& inputs)
 
 void TaskRunner::printTaskConfig() const
 {
-  ILOG(Info, Devel) << "Configuration loaded > Task name : " << mTaskConfig.taskName //
-                    << " / Module name : " << mTaskConfig.moduleName                 //
-                    << " / Detector name : " << mTaskConfig.detectorName             //
-                    << " / Max number cycles : " << mTaskConfig.maxNumberCycles      //
-                    << " / critical : " << mTaskConfig.critical                      //
+  ILOG(Info, Devel) << "Configuration loaded > Task name : " << mTaskConfig.name //
+                    << " / Module name : " << mTaskConfig.moduleName             //
+                    << " / Detector name : " << mTaskConfig.detectorName         //
+                    << " / Max number cycles : " << mTaskConfig.maxNumberCycles  //
+                    << " / critical : " << mTaskConfig.critical                  //
                     << " / Save to file : " << mTaskConfig.saveToFile
                     << " / Cycle duration seconds : ";
   for (auto& [cycleDuration, period] : mTaskConfig.cycleDurations) {
@@ -437,7 +408,7 @@ void TaskRunner::registerToBookkeeping()
   if (!gSystem->Getenv("O2_QC_DONT_REGISTER_IN_BK")) { // Set this variable to disable the registration
     // register ourselves to the BK at the first cycle
     ILOG(Debug, Devel) << "Registering taskRunner to BookKeeping" << ENDM;
-    Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bkp::DplProcessType::QC_TASK, "");
+    Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.name, mTaskConfig.detectorName, bkp::DplProcessType::QC_TASK, "");
   }
 }
 

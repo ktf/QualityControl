@@ -68,6 +68,13 @@ void DigitsQcTask::initialize(o2::framework::InitContext& /*ctx*/)
 
   std::array<std::string, 4> chId{ "11", "12", "21", "22" };
 
+  for (size_t i = 0; i < 36; ++i) {
+    std::string nline = "";
+    nline = std::to_string(i + 1);
+    mLineLocalResp[i] = std::make_unique<TH1F>(fmt::format("RespBoardLine{}", nline).c_str(), fmt::format("RespBoardLine{}", nline).c_str(), 1, 0, 1);
+    getObjectsManager()->startPublishing(mLineLocalResp[i].get());
+  }
+
   for (size_t ich = 0; ich < 5; ++ich) {
     std::string chName = "";
     if (ich < 4) {
@@ -133,8 +140,12 @@ void DigitsQcTask::startOfCycle()
 void DigitsQcTask::monitorData(o2::framework::ProcessingContext& ctx)
 {
   mNbDigitTF->Fill(0.5, 1.);
-  auto digits = o2::mid::specs::getData(ctx, "digits", o2::mid::EventType::Standard);
-  auto rofs = o2::mid::specs::getRofs(ctx, "digits", o2::mid::EventType::Standard);
+
+  auto digits = ctx.inputs().get<gsl::span<o2::mid::ColumnData>>("digits");
+  auto rofs = ctx.inputs().get<gsl::span<o2::mid::ROFRecord>>("digits_rof");
+
+  // auto digits = o2::mid::specs::getData(ctx, "digits", o2::mid::EventType::Standard);
+  // auto rofs = o2::mid::specs::getRofs(ctx, "digits", o2::mid::EventType::Standard);
 
   std::array<unsigned long int, 4> evtSizeB{};
   std::array<unsigned long int, 4> evtSizeNB{};

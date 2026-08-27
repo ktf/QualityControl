@@ -19,8 +19,7 @@
 #include <DataFormatsITS/TrackITS.h>
 #include <DataFormatsITSMFT/ROFRecord.h>
 #include <Framework/InputRecord.h>
-#include "ReconstructionDataFormats/Vertex.h"
-#include "ReconstructionDataFormats/PrimaryVertex.h"
+#include "DataFormatsITS/Vertex.h"
 #include "ITStracking/IOUtils.h"
 #include <DataFormatsITSMFT/ClusterTopology.h>
 #include "Common/Utils.h"
@@ -113,13 +112,12 @@ void ITSTrackTask::monitorData(o2::framework::ProcessingContext& ctx)
 {
 
   ILOG(Debug, Devel) << "START DOING QC General" << ENDM;
-
+  static std::map<std::string, std::string> metadata;
   if (mTimestamp == -1) { // get dict from ccdb
     mTimestamp = std::stol(o2::quality_control_modules::common::getFromConfig<std::string>(mCustomParameters, "dicttimestamp", "0"));
     long int ts = mTimestamp ? mTimestamp : ctx.services().get<o2::framework::TimingInfo>().creation;
     ILOG(Debug, Devel) << "Getting dictionary from ccdb - timestamp: " << ts << ENDM;
 
-    std::map<std::string, std::string> metadata;
     mDict = TaskInterface::retrieveConditionAny<o2::itsmft::TopologyDictionary>("ITS/Calib/ClusterDictionary", metadata, ts);
     ILOG(Debug, Devel) << "Dictionary size: " << mDict->getSize() << ENDM;
 
@@ -133,12 +131,16 @@ void ITSTrackTask::monitorData(o2::framework::ProcessingContext& ctx)
       ILOG(Debug, Devel) << "Loaded new instance of mGeom (for ITS alignment monitoring)" << ENDM;
     }
   }
+  if (mInvMasses) {
+    long ts = mTimestamp > 0 ? mTimestamp : ctx.services().get<o2::framework::TimingInfo>().creation;
+    mMeanVertex = TaskInterface::retrieveConditionAny<o2::dataformats::MeanVertexObject>("GLO/Calib/MeanVertex", metadata, ts);
+  }
 
   auto trackArr = ctx.inputs().get<gsl::span<o2::its::TrackITS>>("tracks");
   auto trackRofArr = ctx.inputs().get<gsl::span<o2::itsmft::ROFRecord>>("rofs");
   auto clusRofArr = ctx.inputs().get<gsl::span<o2::itsmft::ROFRecord>>("clustersrof");
   auto clusArr = ctx.inputs().get<gsl::span<o2::itsmft::CompClusterExt>>("compclus");
-  auto vertexArr = ctx.inputs().get<gsl::span<o2::dataformats::Vertex<o2::dataformats::TimeStamp<int>>>>("Vertices");
+  auto vertexArr = ctx.inputs().get<gsl::span<o2::its::Vertex>>("Vertices");
   auto vertexRofArr = ctx.inputs().get<gsl::span<o2::itsmft::ROFRecord>>("Verticesrof");
 
   auto clusIdx = ctx.inputs().get<gsl::span<int>>("clusteridx");
@@ -215,7 +217,6 @@ void ITSTrackTask::monitorData(o2::framework::ProcessingContext& ctx)
   ft.setMinRelChi2Change(0.9);
   ft.setMaxChi2(10);
   // prepare variables for v0
-  float vx = 0, vy = 0, vz = 0;
   float dca[2]{ 0., 0. };
   float bz = 5.0;
   // loop on tracks per ROF
@@ -372,7 +373,7 @@ void ITSTrackTask::monitorData(o2::framework::ProcessingContext& ctx)
       if (mInvMasses == 1) {
         if (track.getSign() < 0) // choose only positive tracks
           continue;
-        track.getImpactParams(vx, vy, vz, bz, dca);
+        track.getImpactParams(mMeanVertex->getX(), mMeanVertex->getY(), mMeanVertex->getZ(), bz, dca);
         if ((track.getNumberOfClusters() < 6) || (abs(track.getTgl()) > 1.5) || (abs(dca[0]) < 0.06)) // conditions for the track acceptance
           continue;
 
@@ -380,7 +381,7 @@ void ITSTrackTask::monitorData(o2::framework::ProcessingContext& ctx)
           auto& ntrack = trackArr[intrack];
           if (ntrack.getSign() > 0) // choose only negative tracks
             continue;
-          ntrack.getImpactParams(vx, vy, vz, bz, dca);
+          ntrack.getImpactParams(mMeanVertex->getX(), mMeanVertex->getY(), mMeanVertex->getZ(), bz, dca);
           if ((ntrack.getNumberOfClusters() < 6) || (abs(ntrack.getTgl()) > 1.5) || (abs(dca[0]) < 0.06)) // conditions for the track acceptance
             continue;
 

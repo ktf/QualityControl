@@ -22,6 +22,8 @@
 #include "QualityControl/InfrastructureSpecReader.h"
 #include "QualityControl/TimekeeperFactory.h"
 #include "QualityControl/QcInfoLogger.h"
+#include "QualityControl/DataHeaderHelpers.h"
+#include "QualityControl/UserInputOutput.h"
 
 #include <Framework/DeviceSpec.h>
 #include <Framework/CompletionPolicy.h>
@@ -141,11 +143,11 @@ TaskRunnerConfig TaskRunnerFactory::extractConfig(const CommonSpec& globalConfig
     inputs.insert(inputs.begin(), globalTrackingDataRequest->inputs.begin(), globalTrackingDataRequest->inputs.end());
   }
 
-  OutputSpec monitorObjectsSpec{ { "mo" },
-                                 TaskRunner::createTaskDataOrigin(taskSpec.detectorName),
-                                 TaskRunner::createTaskDataDescription(taskSpec.taskName),
-                                 static_cast<header::DataHeader::SubSpecificationType>(parallelTaskID),
-                                 Lifetime::Sporadic };
+  OutputSpec monitorObjectsSpec = createUserOutputSpec(
+    DataSourceType::Task,
+    taskSpec.detectorName,
+    taskSpec.taskName,
+    static_cast<header::DataHeader::SubSpecificationType>(parallelTaskID));
 
   Options options{
     { "period-timer-cycle", framework::VariantType::Int, static_cast<int>(taskSpec.cycleDurationSeconds * 1000000), { "timer period" } },
@@ -169,6 +171,7 @@ TaskRunnerConfig TaskRunnerFactory::extractConfig(const CommonSpec& globalConfig
   o2::globaltracking::RecoContainer rd;
 
   return {
+    taskSpec.taskName,
     taskSpec.moduleName,
     taskSpec.className,
     InfrastructureSpecReader::validateDetectorName(taskSpec.detectorName),
@@ -176,8 +179,8 @@ TaskRunnerConfig TaskRunnerFactory::extractConfig(const CommonSpec& globalConfig
     taskSpec.customParameters,
     globalConfig.conditionDBUrl,
     globalConfig.database,
+    taskSpec.dataSources,
     deviceName,
-    taskSpec.taskName,
     multipleCycleDurations,
     taskSpec.maxNumberCycles,
     taskSpec.critical,
@@ -208,7 +211,7 @@ InputSpec TaskRunnerFactory::createTimerInputSpec(const CommonSpec& globalConfig
   }
 
   return { "timer-cycle",
-           TaskRunner::createTaskDataOrigin(detectorName),
+           createDataOrigin(DataSourceType::Task, detectorName),
            TaskRunner::createTimerDataDescription(taskName),
            0,
            Lifetime::Timer,

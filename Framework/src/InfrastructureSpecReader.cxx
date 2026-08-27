@@ -19,9 +19,12 @@
 #include "QualityControl/PostProcessingDevice.h"
 #include "QualityControl/Check.h"
 #include "QualityControl/AggregatorRunner.h"
+#include "QualityControl/UserInputOutput.h"
 
 #include <DataSampling/DataSampling.h>
 #include <Framework/DataDescriptorQueryBuilder.h>
+
+#include <ranges>
 
 using namespace o2::utilities;
 using namespace o2::framework;
@@ -227,7 +230,7 @@ DataSourceSpec InfrastructureSpecReader::readSpecEntry<DataSourceSpec>(const std
       dss.name = wholeTree.get<std::string>("qc.tasks." + dss.id + ".taskName", dss.id);
       auto detectorName = wholeTree.get<std::string>("qc.tasks." + dss.id + ".detectorName");
 
-      dss.inputs = { { dss.name, TaskRunner::createTaskDataOrigin(detectorName), TaskRunner::createTaskDataDescription(dss.name), 0, Lifetime::Sporadic } };
+      dss.inputs = { createUserInputSpec(DataSourceType::Task, detectorName, dss.name) };
       if (dataSourceTree.count("MOs") > 0) {
         for (const auto& moName : dataSourceTree.get_child("MOs")) {
           const auto mo = moName.second.get_value<std::string>();
@@ -247,7 +250,7 @@ DataSourceSpec InfrastructureSpecReader::readSpecEntry<DataSourceSpec>(const std
       dss.name = taskName + "/mw";
       auto detectorName = wholeTree.get<std::string>("qc.tasks." + dss.id + ".detectorName");
 
-      dss.inputs = { { dss.name, TaskRunner::createTaskDataOrigin(detectorName, true), TaskRunner::createTaskDataDescription(taskName), 0, Lifetime::Sporadic } };
+      dss.inputs = { createUserInputSpec(DataSourceType::TaskMovingWindow, detectorName, taskName, 0, dss.name) };
       if (dataSourceTree.count("MOs") > 0) {
         for (const auto& moName : dataSourceTree.get_child("MOs")) {
           const auto mo = moName.second.get_value<std::string>();
@@ -265,7 +268,7 @@ DataSourceSpec InfrastructureSpecReader::readSpecEntry<DataSourceSpec>(const std
       // this allows us to have tasks with the same name for different detectors
       dss.name = wholeTree.get<std::string>("qc.postprocessing." + dss.id + ".taskName", dss.id);
       auto detectorName = wholeTree.get<std::string>("qc.postprocessing." + dss.id + ".detectorName");
-      dss.inputs = { { dss.name, PostProcessingDevice::createPostProcessingDataOrigin(detectorName), PostProcessingDevice::createPostProcessingDataDescription(dss.id), 0, Lifetime::Sporadic } };
+      dss.inputs = { createUserInputSpec(DataSourceType::PostProcessingTask, detectorName, dss.name, 0, dss.name) };
       if (dataSourceTree.count("MOs") > 0) {
         for (const auto& moName : dataSourceTree.get_child("MOs")) {
           dss.subInputs.push_back(moName.second.get_value<std::string>());
@@ -277,7 +280,7 @@ DataSourceSpec InfrastructureSpecReader::readSpecEntry<DataSourceSpec>(const std
       dss.id = dataSourceTree.get<std::string>("name");
       dss.name = wholeTree.get<std::string>("qc.checks." + dss.id + ".checkName", dss.id);
       auto detectorName = wholeTree.get<std::string>("qc.checks." + dss.id + ".detectorName");
-      dss.inputs = { { dss.name, Check::createCheckDataOrigin(detectorName), Check::createCheckDataDescription(dss.name), 0, Lifetime::Sporadic } };
+      dss.inputs = { createUserInputSpec(DataSourceType::Check, detectorName, dss.name) };
       if (dataSourceTree.count("QOs") > 0) {
         for (const auto& moName : dataSourceTree.get_child("QOs")) {
           const auto qo = moName.second.get_value<std::string>();
@@ -294,7 +297,7 @@ DataSourceSpec InfrastructureSpecReader::readSpecEntry<DataSourceSpec>(const std
       dss.id = dataSourceTree.get<std::string>("name");
       dss.name = wholeTree.get<std::string>("qc.aggregators." + dss.id + ".checkName", dss.id);
       auto detectorName = wholeTree.get<std::string>("qc.aggregators." + dss.id + ".detectorName");
-      dss.inputs = { { dss.name, Check::createCheckDataOrigin(detectorName), AggregatorRunner::createAggregatorRunnerDataDescription(dss.name), 0, Lifetime::Sporadic } };
+      dss.inputs = { createUserInputSpec(DataSourceType::Aggregator, detectorName, dss.name) };
       if (dataSourceTree.count("QOs") > 0) {
         for (const auto& moName : dataSourceTree.get_child("QOs")) {
           const auto qo = moName.second.get_value<std::string>();

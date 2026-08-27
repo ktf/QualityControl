@@ -19,6 +19,10 @@
 #include <Framework/DataProcessorSpec.h>
 #include <Framework/DataSpecUtils.h>
 
+namespace o2::quality_control::core
+{
+
+// fixme: rename to stringifyInputs?
 inline std::vector<std::string> stringifyInput(const o2::framework::Inputs& inputs)
 {
   std::vector<std::string> vec;
@@ -27,5 +31,5 @@ inline std::vector<std::string> stringifyInput(const o2::framework::Inputs& inpu
   }
   return vec;
 }
-
+} // namespace o2::quality_control::core
 #endif

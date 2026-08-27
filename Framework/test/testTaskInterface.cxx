@@ -132,7 +132,7 @@ TEST_CASE("test_invoke_all_TaskRunnerConfig_methods")
 {
   // This is maximum that we can do until we are able to test the DPL algorithms in isolation.
   TaskRunnerConfig taskConfig;
-  auto* objectsManager = new ObjectsManager(taskConfig.taskName, taskConfig.className, taskConfig.detectorName, 0);
+  auto* objectsManager = new ObjectsManager(taskConfig.name, taskConfig.className, taskConfig.detectorName, 0);
 
   test::TestTask testTask(objectsManager);
   CHECK(testTask.test == 0);
@@ -167,6 +167,7 @@ TEST_CASE("test_invoke_all_TaskRunnerConfig_methods")
 TEST_CASE("test_task_factory")
 {
   TaskRunnerConfig config{
+    "skeletonTask",
     "QcSkeleton",
     "o2::quality_control_modules::skeleton::SkeletonTask",
     "TST",
@@ -174,15 +175,15 @@ TEST_CASE("test_task_factory")
     {},
     "something",
     {},
+    {},
     "SkeletonTaskRunner",
-    "skeletonTask",
     { { 10, 1 } },
     -1,
     true,
     ""
   };
 
-  auto objectsManager = make_shared<ObjectsManager>(config.taskName, config.className, config.detectorName, 0);
+  auto objectsManager = make_shared<ObjectsManager>(config.name, config.className, config.detectorName, 0);
 
   TaskFactory taskFactory;
   auto task = taskFactory.create(config, objectsManager);
@@ -200,14 +201,14 @@ TEST_CASE("retrieveCondition")
   bad.addBadChannel(3, o2::emcal::BadChannelMap::MaskType_t::DEAD_CELL);
   std::map<std::string, std::string> meta;
   o2::ccdb::CcdbApi api;
-  api.init("ccdb-test.cern.ch:8080");
+  api.init("ali-qcdb-test.cern.ch:8083");
   api.storeAsTFileAny<o2::emcal::BadChannelMap>(&bad, "qc/TST/conditions", meta);
 
   // retrieve it
   TaskRunnerConfig taskConfig;
-  auto* objectsManager = new ObjectsManager(taskConfig.taskName, taskConfig.className, taskConfig.detectorName, 0);
+  auto* objectsManager = new ObjectsManager(taskConfig.name, taskConfig.className, taskConfig.detectorName, 0);
   test::TestTask testTask(objectsManager);
-  testTask.setCcdbUrl("ccdb-test.cern.ch:8080");
+  testTask.setCcdbUrl("ali-qcdb-test.cern.ch:8083");
   o2::emcal::BadChannelMap* bcm = testTask.testRetrieveCondition();
   CHECK(bcm->getChannelStatus(1) == o2::emcal::BadChannelMap::MaskType_t::GOOD_CELL);
   CHECK(bcm->getChannelStatus(3) == o2::emcal::BadChannelMap::MaskType_t::DEAD_CELL);
