@@ -50,7 +50,7 @@ namespace o2::quality_control::postprocessing
 /// and input/output canvas can be dealt with alongside normal histograms.
 ///
 
-class SliceTrendingTask : public PostProcessingInterface
+class SliceTrendingTask final : public PostProcessingInterface
 {
  public:
   /// \brief Constructor.
@@ -82,6 +82,7 @@ class SliceTrendingTask : public PostProcessingInterface
   };
 
   /// \brief Methods specific to the trending itself.
+  bool canContinueTrend(TTree* tree);
   void trendValues(const Trigger& t, o2::quality_control::repository::DatabaseInterface&);
   void generatePlots();
   void drawCanvasMO(TCanvas* thisCanvas, const std::string& var,
